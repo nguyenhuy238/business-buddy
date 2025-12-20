@@ -20,6 +20,7 @@ public class ProductDto
     public int MinStock { get; set; }
     public decimal CurrentStock { get; set; }
     public string? ImageUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
     public bool IsActive { get; set; }
     public bool IsCombo { get; set; }
     public string? CostMethod { get; set; }
@@ -42,6 +43,7 @@ public class CreateProductDto
     public decimal? WholesalePrice { get; set; }
     public int MinStock { get; set; } = 0;
     public string? ImageUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
     public bool IsCombo { get; set; } = false;
     public string CostMethod { get; set; } = "SIMPLE";
 }
@@ -60,6 +62,7 @@ public class UpdateProductDto
     public decimal? WholesalePrice { get; set; }
     public int? MinStock { get; set; }
     public string? ImageUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
     public bool? IsActive { get; set; }
     public bool? IsCombo { get; set; }
     public string? CostMethod { get; set; }

@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { createProduct, updateProduct, deleteProduct } from "@/services/productService";
+import { createProduct, updateProduct, deleteProduct, uploadProductImage } from "@/services/productService";
 import type { Product, CreateProduct, UpdateProduct } from "@/types";
 
 /**
@@ -82,6 +82,10 @@ export function ProductDialog({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
+  const [createThumb, setCreateThumb] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const isEdit = !!product;
 
   const {
@@ -133,6 +137,7 @@ export function ProductDialog({
       setValue("wholesalePrice", product.wholesalePrice);
       setValue("minStock", product.minStock);
       setValue("imageUrl", product.imageUrl || "");
+      setPreviewUrl(product.thumbnailUrl ?? product.imageUrl ?? undefined);
       setValue("isCombo", product.isCombo);
       setValue("costMethod", product.costMethod || "SIMPLE");
       setValue("isActive", product.isActive);
@@ -156,6 +161,8 @@ export function ProductDialog({
         costMethod: "SIMPLE",
         isActive: true,
       });
+      setSelectedFile(null);
+      setPreviewUrl(undefined);
     }
     setError(null);
   }, [product, open, setValue, reset]);
@@ -455,14 +462,86 @@ export function ProductDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="imageUrl">URL hình ảnh</Label>
+              <Label htmlFor="imageUrl">URL hình ảnh</Label>
+
+              <div className="flex items-center space-x-4">
                 <Input
                   id="imageUrl"
                   type="url"
                   {...register("imageUrl")}
                   placeholder="https://example.com/image.jpg"
                 />
+
+                <div className="flex flex-col">
+                  <input
+                    id="file"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files && e.target.files[0];
+                      if (f) {
+                        setSelectedFile(f);
+                        setPreviewUrl(URL.createObjectURL(f));
+                      }
+                    }}
+                    className="text-sm"
+                  />
+
+                  <label className="flex items-center space-x-2 text-sm mt-2">
+                    <input
+                      type="checkbox"
+                      checked={createThumb}
+                      onChange={(e) => setCreateThumb(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span>Tạo thumbnail 200x200</span>
+                  </label>
+
+                  <Button
+                    type="button"
+                    className="mt-2"
+                    onClick={async () => {
+                      if (!selectedFile || !product) return;
+                      try {
+                        setUploading(true);
+                        const res = await uploadProductImage(product.id, selectedFile, createThumb);
+
+                        // If backend returns relative paths (e.g. "/images/...") convert them to absolute URLs
+                        const toAbsolute = (url?: string | null) => {
+                          if (!url) return "";
+                          if (/^https?:\/\//i.test(url)) return url;
+                          if (url.startsWith("/")) return `${window.location.origin}${url}`;
+                          return url;
+                        };
+
+                        const absImageUrl = toAbsolute(res.imageUrl ?? "");
+                        const absThumbUrl = toAbsolute(res.thumbnailUrl ?? res.imageUrl ?? undefined);
+
+                        setValue("imageUrl", absImageUrl);
+                        // Choose thumbnail if available, otherwise keep previous preview or undefined
+                        setPreviewUrl(absThumbUrl || previewUrl || undefined);
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        setError(msg || "Upload failed");
+                      } finally {
+                        setUploading(false);
+                      }
+                    }}
+                    disabled={!selectedFile || uploading}
+                  >
+                    {uploading ? "Uploading..." : "Upload"}
+                  </Button>
+                </div>
+
+                <div className="w-24 h-24 bg-gray-50 border rounded overflow-hidden">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-gray-400">No image</div>
+                  )}
+                </div>
               </div>
+            </div>
             </div>
 
             <div className="flex items-center space-x-4">

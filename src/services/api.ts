@@ -81,6 +81,31 @@ export const apiClient = {
   },
 
   /**
+   * Performs a POST request with FormData (for file uploads).
+   * Note: Do NOT set Content-Type header for multipart/form-data - the browser will set the boundary.
+   */
+  async postForm<T>(url: string, formData: FormData): Promise<T> {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        response.statusText,
+        await response.text().catch(() => undefined)
+      );
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json();
+  },
+
+  /**
    * Performs a PUT request
    */
   async put<T>(url: string, data: unknown): Promise<T> {

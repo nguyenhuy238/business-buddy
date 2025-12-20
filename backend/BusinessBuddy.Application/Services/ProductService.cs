@@ -97,6 +97,7 @@ public class ProductService : IProductService
         if (dto.WholesalePrice.HasValue) product.WholesalePrice = dto.WholesalePrice;
         if (dto.MinStock.HasValue) product.MinStock = dto.MinStock.Value;
         if (dto.ImageUrl != null) product.ImageUrl = dto.ImageUrl;
+        if (dto.ThumbnailUrl != null) product.ThumbnailUrl = dto.ThumbnailUrl;
         if (dto.IsActive.HasValue) product.IsActive = dto.IsActive.Value;
         if (dto.IsCombo.HasValue) product.IsCombo = dto.IsCombo.Value;
         if (dto.CostMethod != null) product.CostMethod = dto.CostMethod;

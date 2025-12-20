@@ -16,6 +16,7 @@ public class Product
     public decimal? WholesalePrice { get; set; }
     public int MinStock { get; set; } = 0;
     public string? ImageUrl { get; set; }
+    public string? ThumbnailUrl { get; set; }
     public bool IsActive { get; set; } = true;
     public bool IsCombo { get; set; } = false; // Combo/Bundle flag
     public string? CostMethod { get; set; } = "SIMPLE"; // SIMPLE or FIFO

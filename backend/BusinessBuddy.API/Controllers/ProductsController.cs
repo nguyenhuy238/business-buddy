@@ -1,6 +1,11 @@
 using BusinessBuddy.Application.DTOs;
 using BusinessBuddy.Application.Services;
+using Microsoft.AspNetCore.Http;
+using System.IO;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace BusinessBuddy.API.Controllers;
 
@@ -10,11 +15,13 @@ public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
     private readonly ILogger<ProductsController> _logger;
+    private readonly IWebHostEnvironment _env;
 
-    public ProductsController(IProductService productService, ILogger<ProductsController> logger)
+    public ProductsController(IProductService productService, ILogger<ProductsController> logger, IWebHostEnvironment env)
     {
         _productService = productService;
         _logger = logger;
+        _env = env;
     }
 
     [HttpGet]
@@ -124,6 +131,100 @@ public class ProductsController : ControllerBase
         {
             _logger.LogError(ex, "Error updating product {ProductId}", id);
             return StatusCode(500, "An error occurred while updating the product");
+        }
+    }
+
+    [HttpPost("{id}/image")]
+    public async Task<IActionResult> UploadProductImage(Guid id, [FromForm] IFormFile file, [FromForm] bool createThumbnail = true)
+    {
+        try
+        {
+            var product = await _productService.GetProductByIdAsync(id);
+            if (product == null)
+                return NotFound($"Product with ID {id} not found");
+
+            if (file == null || file.Length == 0)
+                return BadRequest("No file uploaded");
+
+            // Validate size (<= 5MB)
+            if (file.Length > 5 * 1024 * 1024)
+                return BadRequest("File too large. Max size is 5 MB.");
+
+            var allowedExt = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowedExt.Contains(ext))
+                return BadRequest("Invalid file type. Allowed: jpg, jpeg, png, webp");
+
+            var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+            if (!allowedContentTypes.Contains(file.ContentType))
+                return BadRequest("Invalid content type");
+
+            var wwwroot = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var dir = Path.Combine(wwwroot, "images", "products");
+            Directory.CreateDirectory(dir);
+
+            var fileName = $"{id}-{Guid.NewGuid()}{ext}";
+            var path = Path.Combine(dir, fileName);
+            using (var stream = System.IO.File.Create(path))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            var imageUrl = $"/images/products/{fileName}";
+            string? thumbnailUrl = null;
+
+            if (createThumbnail)
+            {
+                try
+                {
+                    using (var image = SixLabors.ImageSharp.Image.Load(path))
+                    {
+                        image.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+                        {
+                            Size = new SixLabors.ImageSharp.Size(200, 200),
+                            Mode = SixLabors.ImageSharp.Processing.ResizeMode.Crop
+                        }));
+
+                        var thumbName = $"{id}-{Guid.NewGuid()}-thumb{ext}";
+                        var thumbPath = Path.Combine(dir, thumbName);
+                        switch (ext)
+                        {
+                            case ".jpg":
+                            case ".jpeg":
+                                image.SaveAsJpeg(thumbPath);
+                                break;
+                            case ".png":
+                                image.SaveAsPng(thumbPath);
+                                break;
+                            case ".webp":
+                                image.SaveAsWebp(thumbPath);
+                                break;
+                            default:
+                                image.SaveAsJpeg(thumbPath);
+                                break;
+                        }
+                        thumbnailUrl = $"/images/products/{thumbName}";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to create thumbnail for product {ProductId}", id);
+                    // continue without thumbnail
+                }
+            }
+
+            // Save URLs to product
+            var updateDto = new BusinessBuddy.Application.DTOs.UpdateProductDto { ImageUrl = imageUrl, ThumbnailUrl = thumbnailUrl };
+            var updated = await _productService.UpdateProductAsync(id, updateDto);
+            if (updated == null)
+                return NotFound($"Product with ID {id} not found");
+
+            return Ok(new { imageUrl, thumbnailUrl });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading image for product {ProductId}", id);
+            return StatusCode(500, "An error occurred while uploading the image");
         }
     }
 

@@ -89,3 +89,19 @@ export async function deleteProduct(id: string): Promise<void> {
   await apiClient.delete<void>(`/products/${id}`);
 }
 
+/**
+ * Upload product image (multipart/form-data)
+ * @param id - Product ID
+ * @param file - File to upload
+ * @param createThumbnail - Whether to create a thumbnail (default true)
+ * @returns Object with imageUrl and thumbnailUrl (if generated)
+ */
+export async function uploadProductImage(id: string, file: File, createThumbnail = true): Promise<{ imageUrl: string; thumbnailUrl?: string | null }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("createThumbnail", String(createThumbnail));
+
+  // Use apiClient.postForm so we don't rely on a global variable and to correctly send multipart/form-data
+  return apiClient.postForm<{ imageUrl: string; thumbnailUrl?: string | null }>(`/products/${id}/image`, form);
+}
+

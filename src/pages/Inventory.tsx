@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -67,7 +68,15 @@ function getStockStatus(currentStock: number, minStock: number): 'in_stock' | 'l
   return 'in_stock';
 }
 
-export default function Inventory() {
+// Convert relative path ("/images/..") to absolute using current origin
+const toAbsolute = (url?: string | null) => {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/")) return `${window.location.origin}${url}`;
+  return url;
+};
+
+export default function Inventory() { 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +84,8 @@ export default function Inventory() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | undefined>(undefined);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
 
   /**
    * Load products from API
@@ -263,6 +274,7 @@ export default function Inventory() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-24">Mã SP</TableHead>
+                  <TableHead className="w-20">Ảnh</TableHead>
                   <TableHead>Tên sản phẩm</TableHead>
                   <TableHead>Danh mục</TableHead>
                   <TableHead>ĐVT</TableHead>
@@ -280,6 +292,29 @@ export default function Inventory() {
                     <TableRow key={product.id} className="group">
                       <TableCell className="font-mono text-sm">
                         {product.code}
+                      </TableCell>
+                      <TableCell>
+                        <div
+                          className="w-10 h-10 rounded overflow-hidden bg-gray-50 cursor-pointer"
+                          onClick={() => {
+                            const url = toAbsolute(product.thumbnailUrl ?? product.imageUrl);
+                            if (url) {
+                              setImagePreviewUrl(url);
+                              setImagePreviewOpen(true);
+                            }
+                          }}
+                        >
+                          {product.thumbnailUrl || product.imageUrl ? (
+                            <img
+                              src={toAbsolute(product.thumbnailUrl ?? product.imageUrl)}
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No image</div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>
@@ -322,7 +357,15 @@ export default function Inventory() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const url = toAbsolute(product.thumbnailUrl ?? product.imageUrl);
+                                if (url) {
+                                  setImagePreviewUrl(url);
+                                  setImagePreviewOpen(true);
+                                }
+                              }}
+                            >
                               <Eye className="mr-2 h-4 w-4" />
                               Xem chi tiết
                             </DropdownMenuItem>
@@ -356,6 +399,21 @@ export default function Inventory() {
           )}
         </div>
       </div>
+
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ảnh sản phẩm</DialogTitle>
+          </DialogHeader>
+          <div className="w-full h-80 flex items-center justify-center">
+            {imagePreviewUrl ? (
+              <img src={imagePreviewUrl} alt="Preview" className="max-h-72 object-contain" />
+            ) : (
+              <div className="text-sm text-muted-foreground">No image</div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ProductDialog
         open={dialogOpen}
