@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -27,101 +28,105 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
+  AlertCircle,
+  Loader2,
+  MoreHorizontal,
+  Edit,
+  Trash2,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { getCashbookEntries } from '@/services/cashbookService';
+import type { CashbookEntry } from '@/types';
+import { CashbookDialog } from '@/components/dialogs/CashbookDialog';
 
-const entries = [
-  {
-    id: '1',
-    type: 'income',
-    category: 'Bán hàng',
-    amount: 2500000,
-    description: 'Thu tiền mặt ca sáng',
-    paymentMethod: 'cash',
-    reference: 'DH001-015',
-    createdAt: new Date(),
-  },
-  {
-    id: '2',
-    type: 'income',
-    category: 'Bán hàng',
-    amount: 1850000,
-    description: 'Thu chuyển khoản ca sáng',
-    paymentMethod: 'bank_transfer',
-    reference: 'DH016-028',
-    createdAt: new Date(),
-  },
-  {
-    id: '3',
-    type: 'expense',
-    category: 'Nhập hàng',
-    amount: 5000000,
-    description: 'Thanh toán NCC Vinamilk',
-    paymentMethod: 'bank_transfer',
-    reference: 'NH001',
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-  },
-  {
-    id: '4',
-    type: 'expense',
-    category: 'Vận hành',
-    amount: 500000,
-    description: 'Tiền điện tháng 10',
-    paymentMethod: 'cash',
-    createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-  },
-  {
-    id: '5',
-    type: 'income',
-    category: 'Bán hàng',
-    amount: 3200000,
-    description: 'Thu tiền mặt ca chiều hôm qua',
-    paymentMethod: 'cash',
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-  },
-  {
-    id: '6',
-    type: 'expense',
-    category: 'Lương',
-    amount: 8000000,
-    description: 'Lương nhân viên tháng 10',
-    paymentMethod: 'bank_transfer',
-    createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
-  },
-];
-
+/**
+ * Category labels mapping for cashbook entries
+ */
 const categoryLabels: Record<string, { label: string; color: string }> = {
   'Bán hàng': { label: 'Bán hàng', color: 'bg-success/10 text-success' },
   'Nhập hàng': { label: 'Nhập hàng', color: 'bg-warning/10 text-warning' },
   'Vận hành': { label: 'Vận hành', color: 'bg-info/10 text-info' },
   'Lương': { label: 'Lương', color: 'bg-purple-100 text-purple-800' },
+  'Rent': { label: 'Thuê mặt bằng', color: 'bg-blue-100 text-blue-800' },
+  'Utilities': { label: 'Điện nước', color: 'bg-yellow-100 text-yellow-800' },
+  'Salary': { label: 'Lương nhân viên', color: 'bg-purple-100 text-purple-800' },
+  'Marketing': { label: 'Marketing', color: 'bg-pink-100 text-pink-800' },
+  'Supplies': { label: 'Vật tư', color: 'bg-orange-100 text-orange-800' },
+  'Maintenance': { label: 'Sửa chữa', color: 'bg-red-100 text-red-800' },
+  'Tax': { label: 'Thuế', color: 'bg-indigo-100 text-indigo-800' },
+  'Other': { label: 'Khác', color: 'bg-gray-100 text-gray-800' },
 };
 
+/**
+ * Payment method labels mapping
+ */
 const paymentLabels: Record<string, string> = {
-  cash: 'Tiền mặt',
-  bank_transfer: 'Chuyển khoản',
-  momo: 'Momo',
-  zalopay: 'ZaloPay',
+  Cash: 'Tiền mặt',
+  BankTransfer: 'Chuyển khoản',
+  Momo: 'Momo',
+  ZaloPay: 'ZaloPay',
+  VietQR: 'VietQR',
+  Credit: 'Tín dụng',
 };
 
 export default function Cashbook() {
+  const [entries, setEntries] = useState<CashbookEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
+  const [dialogType, setDialogType] = useState<'Income' | 'Expense'>('Income');
 
+  /**
+   * Load cashbook entries from API
+   */
+  const loadEntries = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getCashbookEntries();
+      setEntries(data);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Không thể tải dữ liệu sổ quỹ";
+      setError(errorMessage);
+      console.error("Error loading cashbook entries:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
+  /**
+   * Filter entries based on search query and type filter
+   */
   const filteredEntries = entries.filter((entry) => {
     const matchesSearch = entry.description
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === 'all' || entry.type === typeFilter;
+    const matchesType = typeFilter === 'all' || entry.type.toLowerCase() === typeFilter.toLowerCase();
     return matchesSearch && matchesType;
   });
 
+  /**
+   * Calculate statistics from entries
+   */
   const totalIncome = entries
-    .filter((e) => e.type === 'income')
+    .filter((e) => e.type === 'Income')
     .reduce((sum, e) => sum + e.amount, 0);
   const totalExpense = entries
-    .filter((e) => e.type === 'expense')
+    .filter((e) => e.type === 'Expense')
     .reduce((sum, e) => sum + e.amount, 0);
   const balance = totalIncome - totalExpense;
 
@@ -130,6 +135,13 @@ export default function Cashbook() {
       <Header title="Sổ quỹ" subtitle="Theo dõi thu chi hàng ngày" />
 
       <div className="p-6 space-y-6">
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-4">
           <div className="rounded-xl border bg-card p-4">
@@ -206,11 +218,27 @@ export default function Cashbook() {
             </Select>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedEntry(null);
+                setDialogType('Income');
+                setDialogOpen(true);
+              }}
+            >
               <ArrowUpCircle className="mr-2 h-4 w-4 text-success" />
               Phiếu thu
             </Button>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedEntry(null);
+                setDialogType('Expense');
+                setDialogOpen(true);
+              }}
+            >
               <ArrowDownCircle className="mr-2 h-4 w-4 text-destructive" />
               Phiếu chi
             </Button>
@@ -219,76 +247,141 @@ export default function Cashbook() {
 
         {/* Table */}
         <div className="rounded-xl border bg-card shadow-sm">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Thời gian</TableHead>
-                <TableHead>Loại</TableHead>
-                <TableHead>Danh mục</TableHead>
-                <TableHead>Mô tả</TableHead>
-                <TableHead>Phương thức</TableHead>
-                <TableHead className="text-right">Số tiền</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDateTime(entry.createdAt)}
-                  </TableCell>
-                  <TableCell>
-                    {entry.type === 'income' ? (
-                      <Badge variant="outline" className="text-success border-success/30">
-                        <ArrowUpCircle className="mr-1 h-3 w-3" />
-                        Thu
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-destructive border-destructive/30">
-                        <ArrowDownCircle className="mr-1 h-3 w-3" />
-                        Chi
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        'rounded-full',
-                        categoryLabels[entry.category]?.color
-                      )}
-                    >
-                      {entry.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{entry.description}</p>
-                      {entry.reference && (
-                        <p className="text-xs text-muted-foreground">
-                          Ref: {entry.reference}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {paymentLabels[entry.paymentMethod]}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        entry.type === 'income' ? 'text-success' : 'text-destructive'
-                      )}
-                    >
-                      {entry.type === 'income' ? '+' : '-'}
-                      {formatCurrency(entry.amount)}
-                    </span>
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center p-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredEntries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <Wallet className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium text-foreground mb-2">
+                Không có giao dịch
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {searchQuery
+                  ? "Thử thay đổi từ khóa tìm kiếm"
+                  : "Chưa có giao dịch nào trong hệ thống"}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Thời gian</TableHead>
+                  <TableHead>Loại</TableHead>
+                  <TableHead>Danh mục</TableHead>
+                  <TableHead>Mô tả</TableHead>
+                  <TableHead>Phương thức</TableHead>
+                  <TableHead className="text-right">Số tiền</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredEntries.map((entry) => (
+                  <TableRow                   key={entry.id}
+                  className="group">
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDateTime(entry.transactionDate)}
+                    </TableCell>
+                    <TableCell>
+                      {entry.type === 'Income' ? (
+                        <Badge variant="outline" className="text-success border-success/30">
+                          <ArrowUpCircle className="mr-1 h-3 w-3" />
+                          Thu
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-destructive border-destructive/30">
+                          <ArrowDownCircle className="mr-1 h-3 w-3" />
+                          Chi
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={cn(
+                          'rounded-full',
+                          categoryLabels[entry.category]?.color || 'bg-gray-100 text-gray-800'
+                        )}
+                      >
+                        {categoryLabels[entry.category]?.label || entry.category}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{entry.description}</p>
+                        {entry.referenceId && (
+                          <p className="text-xs text-muted-foreground">
+                            Ref: {entry.referenceType} #{entry.referenceId.substring(0, 8)}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {paymentLabels[entry.paymentMethod] || entry.paymentMethod}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={cn(
+                          'font-semibold',
+                          entry.type === 'Income' ? 'text-success' : 'text-destructive'
+                        )}
+                      >
+                        {entry.type === 'Income' ? '+' : '-'}
+                        {formatCurrency(entry.amount)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="opacity-0 group-hover:opacity-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedEntry(entry);
+                              setDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Chỉnh sửa
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => {
+                              setSelectedEntry(entry);
+                              setDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Xóa
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </div>
+
+      <CashbookDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        entry={selectedEntry}
+        defaultType={dialogType}
+        onSuccess={() => {
+          loadEntries();
+          setSelectedEntry(null);
+        }}
+      />
     </div>
   );
 }

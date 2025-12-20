@@ -1,24 +1,74 @@
 // Core business types for HKD management system
 
+/**
+ * Product interface matching backend ProductDto
+ */
 export interface Product {
   id: string;
   code: string;
   barcode?: string;
   name: string;
+  description?: string;
   categoryId: string;
-  unit: string;
-  baseUnit: string;
+  categoryName?: string;
+  unitId: string;
+  unitName?: string;
+  baseUnitId?: string;
+  baseUnitName?: string;
   conversionRate: number; // e.g., 1 thùng = 24 chai
   costPrice: number;
   salePrice: number;
   wholesalePrice?: number;
   minStock: number;
   currentStock: number;
-  warehouseId?: string;
   imageUrl?: string;
   isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  isCombo: boolean;
+  costMethod?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Create product DTO for API requests
+ */
+export interface CreateProduct {
+  code: string;
+  barcode?: string;
+  name: string;
+  description?: string;
+  categoryId: string;
+  unitId: string;
+  baseUnitId?: string;
+  conversionRate?: number;
+  costPrice: number;
+  salePrice: number;
+  wholesalePrice?: number;
+  minStock?: number;
+  imageUrl?: string;
+  isCombo?: boolean;
+  costMethod?: string;
+}
+
+/**
+ * Update product DTO for API requests
+ */
+export interface UpdateProduct {
+  barcode?: string;
+  name?: string;
+  description?: string;
+  categoryId?: string;
+  unitId?: string;
+  baseUnitId?: string;
+  conversionRate?: number;
+  costPrice?: number;
+  salePrice?: number;
+  wholesalePrice?: number;
+  minStock?: number;
+  imageUrl?: string;
+  isActive?: boolean;
+  isCombo?: boolean;
+  costMethod?: string;
 }
 
 export interface Category {
@@ -36,6 +86,9 @@ export interface Warehouse {
   isDefault: boolean;
 }
 
+/**
+ * Customer interface matching backend Customer entity
+ */
 export interface Customer {
   id: string;
   code: string;
@@ -43,15 +96,22 @@ export interface Customer {
   phone?: string;
   email?: string;
   address?: string;
-  membershipTier: 'bronze' | 'silver' | 'gold' | 'platinum';
+  membershipTier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
   points: number;
   totalSpent: number;
   receivables: number; // Công nợ phải thu
-  paymentDueDate?: Date;
+  paymentDueDate?: string;
+  zaloId?: string;
+  birthday?: string;
   notes?: string;
-  createdAt: Date;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
+/**
+ * Supplier interface matching backend Supplier entity
+ */
 export interface Supplier {
   id: string;
   code: string;
@@ -59,12 +119,19 @@ export interface Supplier {
   phone?: string;
   email?: string;
   address?: string;
+  taxCode?: string;
+  contactPerson?: string;
   payables: number; // Công nợ phải trả
-  paymentDueDate?: Date;
+  paymentDueDate?: string;
   notes?: string;
-  createdAt: Date;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
+/**
+ * Sale order interface matching backend SaleOrder entity
+ */
 export interface SaleOrder {
   id: string;
   code: string;
@@ -73,14 +140,16 @@ export interface SaleOrder {
   items: SaleOrderItem[];
   subtotal: number;
   discount: number;
-  discountType: 'percent' | 'amount';
+  discountType: 'Percent' | 'Amount';
   total: number;
   paymentMethod: PaymentMethod;
   paidAmount: number;
-  status: 'draft' | 'completed' | 'cancelled' | 'refunded';
+  status: 'Draft' | 'Completed' | 'Cancelled' | 'Refunded';
   notes?: string;
   createdBy: string;
-  createdAt: Date;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SaleOrderItem {
@@ -93,21 +162,32 @@ export interface SaleOrderItem {
   total: number;
 }
 
-export type PaymentMethod = 'cash' | 'bank_transfer' | 'vietqr' | 'momo' | 'zalopay' | 'credit';
+/**
+ * Payment method enum matching backend PaymentMethod
+ */
+export type PaymentMethod = 'Cash' | 'BankTransfer' | 'VietQR' | 'Momo' | 'ZaloPay' | 'Credit';
 
+/**
+ * Cashbook entry interface matching backend CashbookEntry entity
+ */
 export interface CashbookEntry {
   id: string;
-  type: 'income' | 'expense';
+  type: 'Income' | 'Expense';
   category: string;
   amount: number;
   description: string;
   paymentMethod: PaymentMethod;
   referenceId?: string; // Link to order, purchase, etc.
-  referenceType?: 'sale' | 'purchase' | 'expense' | 'other';
+  referenceType?: string; // SaleOrder, PurchaseOrder, etc.
+  bankAccount?: string;
+  transactionDate: string;
   createdBy: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
+/**
+ * Dashboard stats interface matching backend DashboardStatsDto
+ */
 export interface DashboardStats {
   todayRevenue: number;
   todayOrders: number;
@@ -120,12 +200,18 @@ export interface DashboardStats {
   pendingPayables: number;
 }
 
+/**
+ * Revenue by category interface matching backend RevenueByCategoryDto
+ */
 export interface RevenueByCategory {
   category: string;
   revenue: number;
   percentage: number;
 }
 
+/**
+ * Revenue by time interface matching backend RevenueByTimeDto
+ */
 export interface RevenueByTime {
   period: string;
   revenue: number;

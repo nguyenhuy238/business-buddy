@@ -1,15 +1,51 @@
-import { AlertTriangle, Package } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle, Package, Loader2 } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { getProducts } from '@/services/productService';
+import type { Product } from '@/types';
 
-const lowStockProducts = [
-  { name: 'Sữa đặc Ông Thọ', stock: 5, minStock: 20 },
-  { name: 'Đường trắng', stock: 2, minStock: 10 },
-  { name: 'Cà phê nguyên chất', stock: 8, minStock: 15 },
-  { name: 'Trà xanh Thái Nguyên', stock: 3, minStock: 12 },
-];
+/**
+ * Determine if product is low stock
+ */
+function isLowStock(product: Product): boolean {
+  return product.isActive && product.currentStock < product.minStock && product.currentStock > 0;
+}
 
 export function LowStockAlert() {
+  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  /**
+   * Load low stock products from API
+   */
+  useEffect(() => {
+    const loadLowStockProducts = async () => {
+      try {
+        setLoading(true);
+        const products = await getProducts(false); // Only active products
+        const lowStock = products.filter(isLowStock).slice(0, 5); // Top 5
+        setLowStockProducts(lowStock);
+      } catch (err) {
+        console.error("Error loading low stock products:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLowStockProducts();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border bg-card p-5 shadow-sm animate-fade-in">
+        <div className="flex items-center justify-center h-32">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
   if (lowStockProducts.length === 0) return null;
 
   return (
@@ -28,7 +64,7 @@ export function LowStockAlert() {
       <div className="space-y-2">
         {lowStockProducts.map((product) => (
           <div
-            key={product.name}
+            key={product.id}
             className="flex items-center justify-between rounded-lg bg-background p-3"
           >
             <div className="flex items-center gap-3">
@@ -39,7 +75,7 @@ export function LowStockAlert() {
             </div>
             <div className="text-right">
               <span className="text-sm font-semibold text-destructive">
-                Còn {formatNumber(product.stock)}
+                Còn {formatNumber(product.currentStock)}
               </span>
               <span className="text-xs text-muted-foreground">
                 {' '}

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Search,
   Minus,
@@ -17,26 +18,13 @@ import {
   Percent,
   X,
   ShoppingCart,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
-
-const categories = ['Tất cả', 'Đồ uống', 'Đồ ăn', 'Combo', 'Khác'];
-
-const products = [
-  { id: '1', name: 'Cà phê sữa đá', price: 35000, category: 'Đồ uống' },
-  { id: '2', name: 'Trà đào cam sả', price: 45000, category: 'Đồ uống' },
-  { id: '3', name: 'Bánh mì thịt nướng', price: 35000, category: 'Đồ ăn' },
-  { id: '4', name: 'Sinh tố bơ', price: 55000, category: 'Đồ uống' },
-  { id: '5', name: 'Nước ép cam', price: 40000, category: 'Đồ uống' },
-  { id: '6', name: 'Trà sữa trân châu', price: 45000, category: 'Đồ uống' },
-  { id: '7', name: 'Bạc xỉu', price: 35000, category: 'Đồ uống' },
-  { id: '8', name: 'Cà phê đen đá', price: 29000, category: 'Đồ uống' },
-  { id: '9', name: 'Combo sáng', price: 55000, category: 'Combo' },
-  { id: '10', name: 'Sandwich gà', price: 45000, category: 'Đồ ăn' },
-  { id: '11', name: 'Croissant bơ', price: 35000, category: 'Đồ ăn' },
-  { id: '12', name: 'Matcha latte', price: 55000, category: 'Đồ uống' },
-];
+import { getProducts } from '@/services/productService';
+import type { Product } from '@/types';
 
 interface CartItem {
   id: string;
@@ -46,21 +34,58 @@ interface CartItem {
 }
 
 export default function POS() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState(0);
 
+  /**
+   * Load products from API
+   */
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getProducts(false); // Only active products
+        setProducts(data);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Không thể tải danh sách sản phẩm";
+        setError(errorMessage);
+        console.error("Error loading products:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProducts();
+  }, []);
+
+  /**
+   * Get unique categories from products
+   */
+  const categories = ['Tất cả', ...Array.from(new Set(products.map((p) => p.categoryName || 'Khác').filter(Boolean)))];
+
+  /**
+   * Filter products based on search query and selected category
+   */
   const filteredProducts = products.filter((product) => {
     const matchesSearch = product.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
+    const productCategory = product.categoryName || 'Khác';
     const matchesCategory =
-      selectedCategory === 'Tất cả' || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+      selectedCategory === 'Tất cả' || productCategory === selectedCategory;
+    return matchesSearch && matchesCategory && product.isActive;
   });
 
-  const addToCart = (product: (typeof products)[0]) => {
+  /**
+   * Add product to cart
+   */
+  const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
@@ -70,7 +95,12 @@ export default function POS() {
             : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { 
+        id: product.id, 
+        name: product.name, 
+        price: product.salePrice, 
+        quantity: 1 
+      }];
     });
   };
 
@@ -121,6 +151,16 @@ export default function POS() {
           </div>
         </div>
 
+        {/* Error Alert */}
+        {error && (
+          <div className="p-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+
         {/* Categories */}
         <div className="flex gap-2 border-b p-3 overflow-x-auto">
           {categories.map((cat) => (
@@ -141,25 +181,43 @@ export default function POS() {
 
         {/* Products Grid */}
         <ScrollArea className="flex-1 p-4">
-          <div className="grid grid-cols-3 gap-3 lg:grid-cols-4 xl:grid-cols-5">
-            {filteredProducts.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => addToCart(product)}
-                className="flex flex-col items-center rounded-xl border bg-card p-4 text-center transition-all hover:border-primary hover:shadow-md active:scale-95"
-              >
-                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                  <ShoppingCart className="h-6 w-6 text-primary" />
-                </div>
-                <p className="text-sm font-medium text-foreground line-clamp-2">
-                  {product.name}
-                </p>
-                <p className="mt-1 text-sm font-semibold text-primary">
-                  {formatCurrency(product.price)}
-                </p>
-              </button>
-            ))}
-          </div>
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <ShoppingCart className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium text-foreground mb-2">
+                {searchQuery ? "Không tìm thấy sản phẩm" : "Chưa có sản phẩm"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {searchQuery
+                  ? "Thử thay đổi từ khóa tìm kiếm"
+                  : "Chưa có sản phẩm nào trong hệ thống"}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 lg:grid-cols-4 xl:grid-cols-5">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => addToCart(product)}
+                  className="flex flex-col items-center rounded-xl border bg-card p-4 text-center transition-all hover:border-primary hover:shadow-md active:scale-95"
+                >
+                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                    <ShoppingCart className="h-6 w-6 text-primary" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground line-clamp-2">
+                    {product.name}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-primary">
+                    {formatCurrency(product.salePrice)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
         </ScrollArea>
       </div>
 
