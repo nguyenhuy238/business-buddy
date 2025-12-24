@@ -62,6 +62,19 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.SortOrder, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
 
+        // PaymentSettings mappings
+        CreateMap<CreatePaymentSettingsDto, PaymentSettings>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
+            .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => ParseEnum<PaymentMethod>(src.PaymentMethod, PaymentMethod.Cash)))
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
+
+        CreateMap<UpdatePaymentSettingsDto, PaymentSettings>()
+            .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+
+        CreateMap<PaymentSettings, PaymentSettingsDto>()
+            .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => src.PaymentMethod.ToString()));
+
         // Add more mappings as needed
     }
 

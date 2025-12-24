@@ -27,9 +27,107 @@ import {
   Shield,
   Database,
   Calculator,
+  Plus,
+  Edit,
+  Trash2,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import {
+  getPaymentSettings,
+  deletePaymentSettings,
+  type PaymentSettings,
+} from '@/services/paymentSettingsService';
+import { PaymentSettingsDialog } from '@/components/dialogs/PaymentSettingsDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Settings() {
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [editingSettings, setEditingSettings] = useState<PaymentSettings | null>(null);
+  const [deletingSettings, setDeletingSettings] = useState<PaymentSettings | null>(null);
+  const toast = useToast();
+
+  /**
+   * Load payment settings
+   */
+  const loadPaymentSettings = async () => {
+    try {
+      setLoading(true);
+      const data = await getPaymentSettings();
+      setPaymentSettings(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể tải thông tin thanh toán";
+      toast.toast({ title: "Lỗi", description: message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Load payment settings on mount
+   */
+  useEffect(() => {
+    loadPaymentSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Handle edit payment settings
+   */
+  const handleEdit = (settings: PaymentSettings) => {
+    setEditingSettings(settings);
+    setSettingsDialogOpen(true);
+  };
+
+  /**
+   * Handle delete payment settings
+   */
+  const handleDelete = async () => {
+    if (!deletingSettings) return;
+
+    try {
+      await deletePaymentSettings(deletingSettings.id);
+      toast.toast({
+        title: "Thành công",
+        description: "Xóa thông tin thanh toán thành công",
+      });
+      setDeletingSettings(null);
+      loadPaymentSettings();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Có lỗi xảy ra";
+      toast.toast({ title: "Lỗi", description: message });
+    }
+  };
+
+  /**
+   * Get payment method display name
+   */
+  const getPaymentMethodName = (method: string): string => {
+    switch (method) {
+      case "BankTransfer":
+        return "Chuyển khoản";
+      case "VietQR":
+        return "VietQR";
+      case "Momo":
+        return "Ví MoMo";
+      case "ZaloPay":
+        return "Ví ZaloPay";
+      default:
+        return method;
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <Header title="Cài đặt" subtitle="Cấu hình hệ thống và tùy chọn" />
@@ -163,43 +261,124 @@ export default function Settings() {
         {/* Payment Methods */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Phương thức thanh toán
-            </CardTitle>
-            <CardDescription>Cấu hình các phương thức nhận thanh toán</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Thông tin tài khoản thanh toán
+                </CardTitle>
+                <CardDescription>Cấu hình thông tin tài khoản cho các phương thức thanh toán</CardDescription>
+              </div>
+              <Button
+                onClick={() => {
+                  setEditingSettings(null);
+                  setSettingsDialogOpen(true);
+                }}
+                size="sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm mới
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label>Tiền mặt</Label>
-                <p className="text-sm text-muted-foreground">Thanh toán trực tiếp tại quầy</p>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">Đang tải...</div>
+            ) : paymentSettings.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>Chưa có thông tin tài khoản thanh toán</p>
+                <p className="text-sm">Nhấn "Thêm mới" để thêm thông tin tài khoản</p>
               </div>
-              <Switch defaultChecked />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label>VietQR</Label>
-                <p className="text-sm text-muted-foreground">Quét mã QR chuyển khoản</p>
+            ) : (
+              <div className="space-y-3">
+                {paymentSettings.map((setting) => (
+                  <div
+                    key={setting.id}
+                    className="flex items-center justify-between rounded-lg border p-4"
+                  >
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Label className="font-semibold">
+                          {getPaymentMethodName(setting.paymentMethod)}
+                        </Label>
+                        {setting.isDefault && (
+                          <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">
+                            Mặc định
+                          </span>
+                        )}
+                      </div>
+                      {setting.bankName && (
+                        <p className="text-sm text-muted-foreground">
+                          {setting.bankName}
+                        </p>
+                      )}
+                      <p className="text-sm font-mono">
+                        {setting.accountNumber}
+                      </p>
+                      {setting.accountName && (
+                        <p className="text-sm text-muted-foreground">
+                          {setting.accountName}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(setting)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeletingSettings(setting)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <Switch defaultChecked />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label>Momo / ZaloPay</Label>
-                <p className="text-sm text-muted-foreground">Ví điện tử</p>
-              </div>
-              <Switch defaultChecked />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label>Ghi nợ</Label>
-                <p className="text-sm text-muted-foreground">Cho phép khách mua chịu</p>
-              </div>
-              <Switch defaultChecked />
-            </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Payment Settings Dialog */}
+        <PaymentSettingsDialog
+          open={settingsDialogOpen}
+          onOpenChange={(open) => {
+            setSettingsDialogOpen(open);
+            if (!open) {
+              setEditingSettings(null);
+            }
+          }}
+          settings={editingSettings}
+          onSuccess={loadPaymentSettings}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog
+          open={!!deletingSettings}
+          onOpenChange={(open) => {
+            if (!open) setDeletingSettings(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+              <AlertDialogDescription>
+                Bạn có chắc chắn muốn xóa thông tin thanh toán này không? Hành động này không thể hoàn tác.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Hủy</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+                Xóa
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Print Settings */}
         <Card>

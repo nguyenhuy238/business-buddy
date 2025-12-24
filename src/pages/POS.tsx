@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CustomerDialog } from '@/components/dialogs/CustomerDialog';
+import { PaymentQR } from '@/components/PaymentQR';
 import type { Product, Customer, SaleOrder, PaymentMethod } from '@/types';
 
 // Convert relative path ("/images/..") to absolute using backend API origin (supports /images returned by backend)
@@ -81,6 +82,8 @@ export default function POS() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [processing, setProcessing] = useState(false);
+  const [waitingForPayment, setWaitingForPayment] = useState(false);
+  const [pendingOrderCode, setPendingOrderCode] = useState<string | undefined>(undefined);
 
   // Receipt
   const [receipt, setReceipt] = useState<SaleOrder | null>(null);
@@ -147,6 +150,18 @@ export default function POS() {
     createdBy: string;
   }
 
+  /**
+   * Check if payment method requires QR code display
+   */
+  const requiresQRCode = (method: PaymentMethod): boolean => {
+    return method === 'BankTransfer' || method === 'VietQR' || method === 'Momo' || method === 'ZaloPay';
+  };
+
+  /**
+   * Handle payment confirmation
+   * For QR-based payments, show QR first and wait for confirmation
+   * For cash, process immediately
+   */
   const confirmCheckout = async () => {
     if (cart.length === 0) return;
 
@@ -157,6 +172,49 @@ export default function POS() {
       return;
     }
 
+    // For QR-based payments, create order first and show QR code
+    if (requiresQRCode(paymentMethod) && !waitingForPayment) {
+      try {
+        setProcessing(true);
+
+        const items: CreateSaleOrderItem[] = cart.map((item) => ({
+          productId: item.id,
+          quantity: item.quantity,
+          unitId: item.unitId || products.find(p => p.id === item.id)?.unitId || products.find(p => p.id === item.id)?.baseUnitId || '',
+          unitPrice: item.price,
+          discount: 0,
+          discountType: "Percent",
+        }));
+
+        const orderPayload: CreateSaleOrder = {
+          customerId: selectedCustomer?.id,
+          items,
+          discount,
+          discountType: "Percent",
+          paymentMethod: paymentMethod,
+          paidAmount: total,
+          notes: '',
+          status: "Draft", // Create as draft first, complete after payment confirmation
+          createdBy: 'POS',
+        };
+
+        const saved = await createSaleOrder(orderPayload as unknown as Partial<SaleOrder>);
+        setPendingOrderCode(saved.code);
+        setWaitingForPayment(true);
+        setProcessing(false);
+        toast.toast({ 
+          title: 'Đã tạo đơn', 
+          description: `Đơn ${saved.code} đã được tạo. Vui lòng quét mã QR để thanh toán.` 
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Lỗi khi tạo đơn';
+        toast.toast({ title: 'Lỗi', description: message });
+        setProcessing(false);
+      }
+      return;
+    }
+
+    // For cash payments or after QR payment confirmation, complete the order
     try {
       setProcessing(true);
 
@@ -174,25 +232,45 @@ export default function POS() {
         items,
         discount,
         discountType: "Percent",
-        paymentMethod: paymentMethod, // Already a string enum
+        paymentMethod: paymentMethod,
         paidAmount: total,
         notes: '',
         status: "Completed",
         createdBy: 'POS',
       };
 
-      const saved = await createSaleOrder(orderPayload as Partial<SaleOrder>);
+      const saved = await createSaleOrder(orderPayload as unknown as Partial<SaleOrder>);
       toast.toast({ title: 'Thanh toán thành công', description: `Đơn ${saved.code} đã được tạo.` });
       setReceipt(saved);
       setReceiptOpen(true);
       clearCart();
       setCheckoutOpen(false);
+      setWaitingForPayment(false);
+      setPendingOrderCode(undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lỗi khi tạo đơn';
       toast.toast({ title: 'Lỗi', description: message });
     } finally {
       setProcessing(false);
     }
+  };
+
+  /**
+   * Handle payment confirmation after QR payment
+   */
+  const confirmQRPayment = async () => {
+    // In a real implementation, you would verify payment with the payment gateway
+    // For now, we'll just complete the order
+    await confirmCheckout();
+  };
+
+  /**
+   * Cancel QR payment and close dialog
+   */
+  const cancelQRPayment = () => {
+    setWaitingForPayment(false);
+    setPendingOrderCode(undefined);
+    setCheckoutOpen(false);
   };
 
   /**
@@ -614,31 +692,114 @@ export default function POS() {
         />
 
         {/* Checkout dialog */}
-        <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-          <DialogContent className="max-w-md">
+        <Dialog open={checkoutOpen} onOpenChange={(open) => {
+          setCheckoutOpen(open);
+          if (!open) {
+            setWaitingForPayment(false);
+            setPendingOrderCode(undefined);
+          }
+        }}>
+          <DialogContent className={waitingForPayment && requiresQRCode(paymentMethod) ? "max-w-lg" : "max-w-md"}>
             <DialogHeader>
               <DialogTitle>Thanh toán</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="text-sm"><strong>Tạm tính:</strong> {formatCurrency(subtotal)}</div>
-              {discount > 0 && (
-                <div className="text-sm text-success"><strong>Chiết khấu:</strong> {discount}% (-{formatCurrency(discountAmount)})</div>
-              )}
-              <div className="text-lg font-semibold">Tổng: {formatCurrency(total)}</div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Button onClick={() => setPaymentMethod('Cash')} variant={paymentMethod === 'Cash' ? 'default' : 'outline'}>Tiền mặt</Button>
-                <Button onClick={() => setPaymentMethod('BankTransfer')} variant={paymentMethod === 'BankTransfer' ? 'default' : 'outline'}>Chuyển khoản</Button>
-                <Button onClick={() => setPaymentMethod('VietQR')} variant={paymentMethod === 'VietQR' ? 'default' : 'outline'}>VietQR</Button>
-                <Button onClick={() => setPaymentMethod('Momo')} variant={paymentMethod === 'Momo' ? 'default' : 'outline'}>Ví điện tử</Button>
+            {waitingForPayment && requiresQRCode(paymentMethod) ? (
+              // Show QR code for QR-based payments
+              <div className="space-y-4">
+                <PaymentQR
+                  paymentMethod={paymentMethod}
+                  amount={total}
+                  orderCode={pendingOrderCode}
+                />
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    onClick={cancelQRPayment} 
+                    className="flex-1"
+                    disabled={processing}
+                  >
+                    Hủy
+                  </Button>
+                  <Button 
+                    onClick={confirmQRPayment} 
+                    className="flex-1"
+                    disabled={processing}
+                  >
+                    {processing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang xử lý...
+                      </>
+                    ) : (
+                      'Đã thanh toán'
+                    )}
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              // Show payment method selection
+              <div className="space-y-4">
+                <div className="text-sm"><strong>Tạm tính:</strong> {formatCurrency(subtotal)}</div>
+                {discount > 0 && (
+                  <div className="text-sm text-success"><strong>Chiết khấu:</strong> {discount}% (-{formatCurrency(discountAmount)})</div>
+                )}
+                <div className="text-lg font-semibold">Tổng: {formatCurrency(total)}</div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCheckoutOpen(false)} disabled={processing}>Hủy</Button>
-              <Button onClick={confirmCheckout} disabled={processing}>{processing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Xác nhận'}</Button>
-            </DialogFooter>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    onClick={() => setPaymentMethod('Cash')} 
+                    variant={paymentMethod === 'Cash' ? 'default' : 'outline'}
+                    className="h-auto py-3 flex-col gap-1"
+                  >
+                    <Banknote className="h-4 w-4" />
+                    <span className="text-xs">Tiền mặt</span>
+                  </Button>
+                  <Button 
+                    onClick={() => setPaymentMethod('BankTransfer')} 
+                    variant={paymentMethod === 'BankTransfer' ? 'default' : 'outline'}
+                    className="h-auto py-3 flex-col gap-1"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    <span className="text-xs">Chuyển khoản</span>
+                  </Button>
+                  <Button 
+                    onClick={() => setPaymentMethod('VietQR')} 
+                    variant={paymentMethod === 'VietQR' ? 'default' : 'outline'}
+                    className="h-auto py-3 flex-col gap-1"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    <span className="text-xs">VietQR</span>
+                  </Button>
+                  <Button 
+                    onClick={() => setPaymentMethod('Momo')} 
+                    variant={paymentMethod === 'Momo' ? 'default' : 'outline'}
+                    className="h-auto py-3 flex-col gap-1"
+                  >
+                    <Wallet className="h-4 w-4" />
+                    <span className="text-xs">Ví điện tử</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {!waitingForPayment && (
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCheckoutOpen(false)} disabled={processing}>
+                  Hủy
+                </Button>
+                <Button onClick={confirmCheckout} disabled={processing}>
+                  {processing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    'Xác nhận'
+                  )}
+                </Button>
+              </DialogFooter>
+            )}
           </DialogContent>
         </Dialog>
 
