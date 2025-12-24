@@ -47,6 +47,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "YOUR_API_URL_HERE";
 - `POST /api/Products` - Tạo sản phẩm mới
 - `PUT /api/Products/{id}` - Cập nhật sản phẩm
 - `DELETE /api/Products/{id}` - Xóa sản phẩm
+- `POST /api/Products/{id}/image` - Upload hình ảnh cho sản phẩm (multipart/form-data)
+  - Fields:
+    - `file` (file, required) - Hình ảnh (jpg, jpeg, png, webp), max 5 MB
+    - `createThumbnail` (bool, optional, default true) - Tạo thumbnail 200x200
+  - Response: JSON { "imageUrl": "/images/products/<file>", "thumbnailUrl": "/images/products/<thumb>" | null }
 
 **Lưu ý**: ASP.NET Core routing không phân biệt hoa thường, nên `/Products` và `/products` đều hoạt động.
 

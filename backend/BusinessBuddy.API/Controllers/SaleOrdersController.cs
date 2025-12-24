@@ -105,21 +105,51 @@ public class SaleOrdersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] SaleOrder order)
+    public async Task<IActionResult> Create([FromBody] CreateSaleOrderDto dto)
     {
         try
         {
-            if (order == null) return BadRequest();
+            if (dto == null || dto.Items == null || dto.Items.Count == 0)
+                return BadRequest("Order must have at least one item");
 
-            // Basic total and item linking
-            order.CreatedAt = DateTime.UtcNow;
-            order.UpdatedAt = DateTime.UtcNow;
-            if (order.Items != null)
+            // Map DTO to entity
+            var order = _mapper.Map<SaleOrder>(dto);
+
+            // Generate order code (format: SO-YYYYMMDD-HHMMSS-XXXX)
+            var now = DateTime.UtcNow;
+            var codePrefix = $"SO-{now:yyyyMMdd}-{now:HHmmss}";
+            var existingCount = await _context.SaleOrders
+                .CountAsync(o => o.Code.StartsWith(codePrefix));
+            order.Code = $"{codePrefix}-{(existingCount + 1):D4}";
+
+            // Calculate subtotal from items
+            order.Subtotal = order.Items.Sum(i => i.Total);
+
+            // Calculate total with discount
+            decimal discountAmount = 0;
+            if (order.DiscountType == DiscountType.Percent)
             {
-                foreach (var item in order.Items)
-                {
-                    item.SaleOrderId = order.Id;
-                }
+                discountAmount = order.Subtotal * order.Discount / 100;
+            }
+            else
+            {
+                discountAmount = order.Discount;
+            }
+            order.Total = order.Subtotal - discountAmount;
+
+            // Set timestamps
+            order.CreatedAt = now;
+            order.UpdatedAt = now;
+            if (order.Status == SaleOrderStatus.Completed)
+            {
+                order.CompletedAt = now;
+            }
+
+            // Link items to order
+            foreach (var item in order.Items)
+            {
+                item.SaleOrderId = order.Id;
+                item.CreatedAt = now;
             }
 
             await _unitOfWork.SaleOrders.AddAsync(order);
@@ -127,7 +157,21 @@ public class SaleOrdersController : ControllerBase
             // Optionally update stock and cashbook / transactions here
 
             await _unitOfWork.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetById), new { id = order.Id }, order);
+
+            // Load the order with all relationships for response
+            var createdOrder = await _context.SaleOrders
+                .Include(o => o.Items)
+                    .ThenInclude(i => i.Product)
+                .Include(o => o.Items)
+                    .ThenInclude(i => i.Unit)
+                .Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == order.Id);
+
+            if (createdOrder == null)
+                return StatusCode(500, "Failed to retrieve created order");
+
+            var orderDto = _mapper.Map<SaleOrderDto>(createdOrder);
+            return CreatedAtAction(nameof(GetById), new { id = order.Id }, orderDto);
         }
         catch (Exception ex)
         {

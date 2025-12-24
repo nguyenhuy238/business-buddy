@@ -65,6 +65,61 @@ export const apiClient = {
     });
 
     if (!response.ok) {
+      let errorMessage: string | undefined;
+      try {
+        const errorText = await response.text();
+        // Try to parse as JSON for validation errors
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && typeof errorJson.errors === "object") {
+            // Format validation errors
+            const errorMessages: string[] = [];
+            for (const [key, value] of Object.entries(errorJson.errors)) {
+              if (Array.isArray(value)) {
+                errorMessages.push(`${key}: ${value.join(", ")}`);
+              } else {
+                errorMessages.push(`${key}: ${String(value)}`);
+              }
+            }
+            errorMessage = errorMessages.join("\n");
+          } else if (errorJson.title) {
+            errorMessage = errorJson.title;
+          } else {
+            errorMessage = errorText;
+          }
+        } catch {
+          errorMessage = errorText;
+        }
+      } catch {
+        errorMessage = undefined;
+      }
+      
+      throw new ApiError(
+        response.status,
+        response.statusText,
+        errorMessage
+      );
+    }
+
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Performs a POST request with FormData (for file uploads).
+   * Note: Do NOT set Content-Type header for multipart/form-data - the browser will set the boundary.
+   */
+  async postForm<T>(url: string, formData: FormData): Promise<T> {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
       throw new ApiError(
         response.status,
         response.statusText,
@@ -72,7 +127,6 @@ export const apiClient = {
       );
     }
 
-    // Handle 204 No Content
     if (response.status === 204) {
       return undefined as T;
     }

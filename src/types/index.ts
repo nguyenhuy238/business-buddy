@@ -22,6 +22,7 @@ export interface Product {
   minStock: number;
   currentStock: number;
   imageUrl?: string;
+  thumbnailUrl?: string;
   isActive: boolean;
   isCombo: boolean;
   costMethod?: string;
@@ -46,6 +47,7 @@ export interface CreateProduct {
   wholesalePrice?: number;
   minStock?: number;
   imageUrl?: string;
+  thumbnailUrl?: string;
   isCombo?: boolean;
   costMethod?: string;
 }
@@ -66,6 +68,7 @@ export interface UpdateProduct {
   wholesalePrice?: number;
   minStock?: number;
   imageUrl?: string;
+  thumbnailUrl?: string;
   isActive?: boolean;
   isCombo?: boolean;
   costMethod?: string;

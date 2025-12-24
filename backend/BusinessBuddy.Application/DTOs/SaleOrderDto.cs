@@ -39,8 +39,9 @@ public class CreateSaleOrderDto
     public Guid? CustomerId { get; set; }
     public List<CreateSaleOrderItemDto> Items { get; set; } = new();
     public decimal Discount { get; set; } = 0;
-    public string DiscountType { get; set; } = "Percent";
-    public string PaymentMethod { get; set; } = "Cash";
+    public string? DiscountType { get; set; } = "Percent";
+    public string? PaymentMethod { get; set; } = "Cash";
+    public string? Status { get; set; } = "Completed";
     public decimal PaidAmount { get; set; }
     public string? Notes { get; set; }
     public string CreatedBy { get; set; } = "System";
@@ -53,6 +54,6 @@ public class CreateSaleOrderItemDto
     public Guid UnitId { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal Discount { get; set; } = 0;
-    public string DiscountType { get; set; } = "Percent";
+    public string? DiscountType { get; set; } = "Percent";
 }
 

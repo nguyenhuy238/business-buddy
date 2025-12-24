@@ -143,6 +143,7 @@ Bạn có thể tạo file seed data trong `BusinessBuddy.Infrastructure/Data/Se
 - `POST /api/products` - Tạo sản phẩm mới
 - `PUT /api/products/{id}` - Cập nhật sản phẩm
 - `DELETE /api/products/{id}` - Xóa sản phẩm
+- `POST /api/products/{id}/image` - Upload hình ảnh cho sản phẩm (multipart/form-data). Trả về `imageUrl` và `thumbnailUrl` (nếu có).
 
 ### Dashboard
 

@@ -65,10 +65,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
+app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
 
-// Ensure database is created
+// Ensure database is created and compatible
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -77,6 +78,28 @@ using (var scope = app.Services.CreateScope())
         var context = services.GetRequiredService<ApplicationDbContext>();
         context.Database.Migrate();
         Log.Information("Database migrated successfully");
+
+        try
+        {
+            // Ensure ThumbnailUrl column exists for older databases that don't have the migration applied
+            var conn = context.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                conn.Open();
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'ThumbnailUrl' AND Object_id = Object_id(N'dbo.Products'))
+BEGIN
+    ALTER TABLE dbo.Products ADD ThumbnailUrl nvarchar(max) NULL;
+END";
+                cmd.ExecuteNonQuery();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: log and continue. This prevents the app from failing if the DB user lacks ALTER permissions.
+            Log.Warning(ex, "Could not ensure ThumbnailUrl column exists; continuing without altering schema.");
+        }
     }
     catch (Exception ex)
     {
