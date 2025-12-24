@@ -68,11 +68,20 @@ function getStockStatus(currentStock: number, minStock: number): 'in_stock' | 'l
   return 'in_stock';
 }
 
-// Convert relative path ("/images/..") to absolute using current origin
+// Convert relative path ("/images/..") to absolute using backend API origin (images served from backend)
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "https://localhost:44384/api";
+const apiOrigin = (() => {
+  try {
+    return new URL(API_BASE).origin;
+  } catch {
+    return window.location.origin;
+  }
+})();
+
 const toAbsolute = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("/")) return `${window.location.origin}${url}`;
+  if (url.startsWith("/")) return `${apiOrigin}${url}`;
   return url;
 };
 

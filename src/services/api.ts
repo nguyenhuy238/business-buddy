@@ -65,10 +65,39 @@ export const apiClient = {
     });
 
     if (!response.ok) {
+      let errorMessage: string | undefined;
+      try {
+        const errorText = await response.text();
+        // Try to parse as JSON for validation errors
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.errors && typeof errorJson.errors === "object") {
+            // Format validation errors
+            const errorMessages: string[] = [];
+            for (const [key, value] of Object.entries(errorJson.errors)) {
+              if (Array.isArray(value)) {
+                errorMessages.push(`${key}: ${value.join(", ")}`);
+              } else {
+                errorMessages.push(`${key}: ${String(value)}`);
+              }
+            }
+            errorMessage = errorMessages.join("\n");
+          } else if (errorJson.title) {
+            errorMessage = errorJson.title;
+          } else {
+            errorMessage = errorText;
+          }
+        } catch {
+          errorMessage = errorText;
+        }
+      } catch {
+        errorMessage = undefined;
+      }
+      
       throw new ApiError(
         response.status,
         response.statusText,
-        await response.text().catch(() => undefined)
+        errorMessage
       );
     }
 

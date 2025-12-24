@@ -88,6 +88,23 @@ export function ProductDialog({
   const [uploading, setUploading] = useState(false);
   const isEdit = !!product;
 
+  // Convert relative path ("/images/..") to absolute using backend API origin (supports /images/... returned by backend)
+  const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "https://localhost:44384/api";
+  const apiOrigin = (() => {
+    try {
+      return new URL(API_BASE).origin;
+    } catch {
+      return window.location.origin;
+    }
+  })();
+
+  const toAbsolute = (url?: string | null) => {
+    if (!url) return undefined;
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith("/")) return `${apiOrigin}${url}`;
+    return url;
+  }; 
+
   const {
     register,
     handleSubmit,
@@ -136,8 +153,10 @@ export function ProductDialog({
       setValue("salePrice", product.salePrice);
       setValue("wholesalePrice", product.wholesalePrice);
       setValue("minStock", product.minStock);
-      setValue("imageUrl", product.imageUrl || "");
-      setPreviewUrl(product.thumbnailUrl ?? product.imageUrl ?? undefined);
+      const absImageUrl = toAbsolute(product.imageUrl ?? undefined) ?? "";
+      const absThumbUrl = toAbsolute(product.thumbnailUrl ?? product.imageUrl ?? undefined);
+      setValue("imageUrl", absImageUrl);
+      setPreviewUrl(absThumbUrl ?? (absImageUrl || undefined));
       setValue("isCombo", product.isCombo);
       setValue("costMethod", product.costMethod || "SIMPLE");
       setValue("isActive", product.isActive);
@@ -166,6 +185,18 @@ export function ProductDialog({
     }
     setError(null);
   }, [product, open, setValue, reset]);
+
+  // Update preview when imageUrl is manually changed (unless a local file is selected)
+  const watchedImageUrl = watch("imageUrl");
+  useEffect(() => {
+    if (selectedFile) return; // keep preview for selected local file
+    if (!watchedImageUrl) {
+      setPreviewUrl(undefined);
+      return;
+    }
+    const abs = toAbsolute(watchedImageUrl) ?? watchedImageUrl;
+    setPreviewUrl(abs);
+  }, [watchedImageUrl, selectedFile]);
 
   /**
    * Handle form submission (create or update)
@@ -514,12 +545,12 @@ export function ProductDialog({
                           return url;
                         };
 
-                        const absImageUrl = toAbsolute(res.imageUrl ?? "");
+                        const absImageUrl = toAbsolute(res.imageUrl ?? undefined) ?? "";
                         const absThumbUrl = toAbsolute(res.thumbnailUrl ?? res.imageUrl ?? undefined);
 
-                        setValue("imageUrl", absImageUrl);
+                        setValue("imageUrl", absImageUrl ?? "");
                         // Choose thumbnail if available, otherwise keep previous preview or undefined
-                        setPreviewUrl(absThumbUrl || previewUrl || undefined);
+                        setPreviewUrl(absThumbUrl ?? previewUrl ?? undefined);
                       } catch (err) {
                         const msg = err instanceof Error ? err.message : String(err);
                         setError(msg || "Upload failed");

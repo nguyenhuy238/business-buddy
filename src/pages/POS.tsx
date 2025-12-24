@@ -23,14 +23,43 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { getProducts } from '@/services/productService';
-import type { Product } from '@/types';
+import { getProducts, getProductByBarcode, getProductByCode } from '@/services/productService';
+import { getCustomers } from '@/services/customerService';
+import { createSaleOrder } from '@/services/saleOrderService';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { CustomerDialog } from '@/components/dialogs/CustomerDialog';
+import type { Product, Customer, SaleOrder, PaymentMethod } from '@/types';
+
+// Convert relative path ("/images/..") to absolute using backend API origin (supports /images returned by backend)
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "https://localhost:44384/api";
+const apiOrigin = (() => {
+  try {
+    return new URL(API_BASE).origin;
+  } catch {
+    return window.location.origin;
+  }
+})();
+const toAbsolute = (url?: string | null) => {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/")) return `${apiOrigin}${url}`;
+  return url;
+};
 
 interface CartItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
+  unitId?: string; // GUID of the unit of measure (required by backend)
 }
 
 export default function POS() {
@@ -41,6 +70,130 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState(0);
+
+  // Customers & selection
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [customerSelectorOpen, setCustomerSelectorOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  // Checkout / payment
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [processing, setProcessing] = useState(false);
+
+  // Receipt
+  const [receipt, setReceipt] = useState<SaleOrder | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+
+  const toast = useToast();
+
+  // Load customers when customer selector is opened
+  useEffect(() => {
+    if (!customerSelectorOpen) return;
+    const loadCustomers = async () => {
+      try {
+        const data = await getCustomers();
+        setCustomers(data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Không thể tải khách hàng";
+        toast.toast({ title: "Lỗi", description: message });
+      }
+    };
+
+    loadCustomers();
+  }, [customerSelectorOpen, toast]);
+
+  // Handle barcode or code lookup when pressing Enter in search
+  const handleBarcodeSearch = async (query: string) => {
+    if (!query) return;
+    try {
+      setLoading(true);
+      const byBarcode = await getProductByBarcode(query).catch(() => null);
+      const byCode = byBarcode ? null : await getProductByCode(query).catch(() => null);
+      const product = byBarcode || byCode;
+      if (product) {
+        addToCart(product);
+        setSearchQuery('');
+      } else {
+        toast.toast({ title: 'Không tìm thấy', description: 'Không tìm thấy sản phẩm với mã này.' });
+      }
+    } catch (err) {
+      toast.toast({ title: 'Lỗi', description: err instanceof Error ? err.message : 'Lỗi khi tìm sản phẩm' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Payload types for create order (matching CreateSaleOrderDto)
+  interface CreateSaleOrderItem {
+    productId: string;
+    quantity: number;
+    unitId: string;
+    unitPrice: number;
+    discount: number;
+    discountType: string; // "Percent" or "Amount"
+  }
+
+  interface CreateSaleOrder {
+    customerId?: string;
+    items: CreateSaleOrderItem[];
+    discount: number;
+    discountType: string; // "Percent" or "Amount"
+    paymentMethod: string; // "Cash", "BankTransfer", "VietQR", etc.
+    status?: string; // "Draft", "Completed", "Cancelled", "Refunded"
+    paidAmount: number;
+    notes?: string;
+    createdBy: string;
+  }
+
+  const confirmCheckout = async () => {
+    if (cart.length === 0) return;
+
+    // ensure unitId exists for all items
+    const missingUnit = cart.find((c) => !c.unitId && !products.find(p => p.id === c.id)?.unitId && !products.find(p => p.id === c.id)?.baseUnitId);
+    if (missingUnit) {
+      toast.toast({ title: 'Lỗi dữ liệu', description: `Đơn chứa sản phẩm ${missingUnit.name} thiếu đơn vị (UnitId).` });
+      return;
+    }
+
+    try {
+      setProcessing(true);
+
+      const items: CreateSaleOrderItem[] = cart.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+        unitId: item.unitId || products.find(p => p.id === item.id)?.unitId || products.find(p => p.id === item.id)?.baseUnitId || '',
+        unitPrice: item.price,
+        discount: 0,
+        discountType: "Percent",
+      }));
+
+      const orderPayload: CreateSaleOrder = {
+        customerId: selectedCustomer?.id,
+        items,
+        discount,
+        discountType: "Percent",
+        paymentMethod: paymentMethod, // Already a string enum
+        paidAmount: total,
+        notes: '',
+        status: "Completed",
+        createdBy: 'POS',
+      };
+
+      const saved = await createSaleOrder(orderPayload as Partial<SaleOrder>);
+      toast.toast({ title: 'Thanh toán thành công', description: `Đơn ${saved.code} đã được tạo.` });
+      setReceipt(saved);
+      setReceiptOpen(true);
+      clearCart();
+      setCheckoutOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Lỗi khi tạo đơn';
+      toast.toast({ title: 'Lỗi', description: message });
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   /**
    * Load products from API
@@ -99,7 +252,8 @@ export default function POS() {
         id: product.id, 
         name: product.name, 
         price: product.salePrice, 
-        quantity: 1 
+        quantity: 1,
+        unitId: product.unitId || product.baseUnitId || undefined,
       }];
     });
   };
@@ -146,6 +300,11 @@ export default function POS() {
               placeholder="Tìm sản phẩm hoặc quét barcode..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleBarcodeSearch(searchQuery.trim());
+                }
+              }}
               className="pl-9"
             />
           </div>
@@ -205,8 +364,19 @@ export default function POS() {
                   onClick={() => addToCart(product)}
                   className="flex flex-col items-center rounded-xl border bg-card p-4 text-center transition-all hover:border-primary hover:shadow-md active:scale-95"
                 >
-                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                    <ShoppingCart className="h-6 w-6 text-primary" />
+                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 overflow-hidden">
+                    {product.thumbnailUrl || product.imageUrl ? (
+                      <img
+                        src={toAbsolute(product.thumbnailUrl ?? product.imageUrl)}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center w-full h-full">
+                        <ShoppingCart className="h-6 w-6 text-primary" />
+                      </div>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-foreground line-clamp-2">
                     {product.name}
@@ -244,9 +414,9 @@ export default function POS() {
 
         {/* Customer */}
         <div className="border-b p-4">
-          <Button variant="outline" className="w-full justify-start">
+          <Button variant="outline" className="w-full justify-start" onClick={() => setCustomerSelectorOpen(true)}>
             <User className="mr-2 h-4 w-4" />
-            Chọn khách hàng
+            {selectedCustomer ? `${selectedCustomer.name}` : 'Chọn khách hàng'}
           </Button>
         </div>
 
@@ -315,7 +485,10 @@ export default function POS() {
               type="number"
               placeholder="Chiết khấu %"
               value={discount || ''}
-              onChange={(e) => setDiscount(Number(e.target.value))}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setDiscount(isNaN(val) ? 0 : Math.max(0, Math.min(100, val)));
+              }}
               className="h-9"
             />
           </div>
@@ -345,6 +518,7 @@ export default function POS() {
               variant="outline"
               className="h-12 flex-col gap-1"
               disabled={cart.length === 0}
+              onClick={() => { setPaymentMethod('Cash'); setCheckoutOpen(true); }}
             >
               <Banknote className="h-4 w-4" />
               <span className="text-xs">Tiền mặt</span>
@@ -353,6 +527,7 @@ export default function POS() {
               variant="outline"
               className="h-12 flex-col gap-1"
               disabled={cart.length === 0}
+              onClick={() => { setPaymentMethod('BankTransfer'); setCheckoutOpen(true); }}
             >
               <CreditCard className="h-4 w-4" />
               <span className="text-xs">Chuyển khoản</span>
@@ -361,6 +536,7 @@ export default function POS() {
               variant="outline"
               className="h-12 flex-col gap-1"
               disabled={cart.length === 0}
+              onClick={() => { setPaymentMethod('VietQR'); setCheckoutOpen(true); }}
             >
               <QrCode className="h-4 w-4" />
               <span className="text-xs">VietQR</span>
@@ -369,10 +545,11 @@ export default function POS() {
               variant="outline"
               className="h-12 flex-col gap-1"
               disabled={cart.length === 0}
+              onClick={() => { setPaymentMethod('Momo'); setCheckoutOpen(true); }}
             >
               <Wallet className="h-4 w-4" />
               <span className="text-xs">Ví điện tử</span>
-            </Button>
+            </Button> 
           </div>
 
           {/* Checkout Button */}
@@ -380,10 +557,120 @@ export default function POS() {
             className="w-full h-12 text-base shadow-glow"
             size="lg"
             disabled={cart.length === 0}
+            onClick={() => { setPaymentMethod('Cash'); setCheckoutOpen(true); }}
           >
             Thanh toán {formatCurrency(total)}
           </Button>
         </div>
+
+        {/* Customer selector dialog */}
+        <Dialog open={customerSelectorOpen} onOpenChange={setCustomerSelectorOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Chọn khách hàng</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Input placeholder="Tìm khách hàng..." onChange={(e) => { const q = e.target.value.toLowerCase(); setCustomers((prev) => prev.filter(c => c.name.toLowerCase().includes(q) || (c.phone || '').includes(q))); }} />
+                <Button onClick={() => setCustomerDialogOpen(true)}>Thêm mới</Button>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto">
+                {customers.length === 0 ? (
+                  <div className="text-sm text-muted-foreground p-3">Không có khách hàng</div>
+                ) : (
+                  customers.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between p-2 hover:bg-muted rounded">
+                      <div>
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">{c.phone}</div>
+                      </div>
+                      <div>
+                        <Button size="sm" onClick={() => { setSelectedCustomer(c); setCustomerSelectorOpen(false); }}>
+                          Chọn
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCustomerSelectorOpen(false)}>Đóng</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <CustomerDialog
+          open={customerDialogOpen}
+          onOpenChange={setCustomerDialogOpen}
+          onSuccess={() => {
+            setCustomerDialogOpen(false);
+            // reload customers if selector open
+            if (customerSelectorOpen) getCustomers().then(setCustomers).catch(() => {});
+          }}
+        />
+
+        {/* Checkout dialog */}
+        <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Thanh toán</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="text-sm"><strong>Tạm tính:</strong> {formatCurrency(subtotal)}</div>
+              {discount > 0 && (
+                <div className="text-sm text-success"><strong>Chiết khấu:</strong> {discount}% (-{formatCurrency(discountAmount)})</div>
+              )}
+              <div className="text-lg font-semibold">Tổng: {formatCurrency(total)}</div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button onClick={() => setPaymentMethod('Cash')} variant={paymentMethod === 'Cash' ? 'default' : 'outline'}>Tiền mặt</Button>
+                <Button onClick={() => setPaymentMethod('BankTransfer')} variant={paymentMethod === 'BankTransfer' ? 'default' : 'outline'}>Chuyển khoản</Button>
+                <Button onClick={() => setPaymentMethod('VietQR')} variant={paymentMethod === 'VietQR' ? 'default' : 'outline'}>VietQR</Button>
+                <Button onClick={() => setPaymentMethod('Momo')} variant={paymentMethod === 'Momo' ? 'default' : 'outline'}>Ví điện tử</Button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCheckoutOpen(false)} disabled={processing}>Hủy</Button>
+              <Button onClick={confirmCheckout} disabled={processing}>{processing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Xác nhận'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Receipt dialog */}
+        <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Biên lai {receipt?.code ? `- ${receipt.code}` : ''}</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <div className="text-sm">Khách hàng: {receipt?.customerName || 'Khách lẻ'}</div>
+              <div className="text-sm">Thời gian: {receipt ? new Date(receipt.createdAt).toLocaleString() : ''}</div>
+
+              <div className="border rounded p-2 max-h-48 overflow-y-auto">
+                {receipt?.items?.map((it, idx) => (
+                  <div key={idx} className="flex justify-between text-sm">
+                    <div>{it.productName} x{it.quantity}</div>
+                    <div>{formatCurrency(it.total)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-right font-semibold">Tổng: {formatCurrency(receipt?.total || 0)}</div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReceiptOpen(false)}>Đóng</Button>
+              <Button onClick={() => window.print()}>In</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
