@@ -35,7 +35,9 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { createProduct, updateProduct, deleteProduct, uploadProductImage } from "@/services/productService";
-import type { Product, CreateProduct, UpdateProduct } from "@/types";
+import { getCategories } from "@/services/categoryService";
+import { getUnitOfMeasures } from "@/services/unitOfMeasureService";
+import type { Product, CreateProduct, UpdateProduct, Category, UnitOfMeasure } from "@/types";
 
 /**
  * Form data interface for product
@@ -86,6 +88,9 @@ export function ProductDialog({
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   const [createThumb, setCreateThumb] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [units, setUnits] = useState<UnitOfMeasure[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
   const isEdit = !!product;
 
   // Convert relative path ("/images/..") to absolute using backend API origin (supports /images/... returned by backend)
@@ -120,7 +125,7 @@ export function ProductDialog({
       description: "",
       categoryId: "",
       unitId: "",
-      baseUnitId: "",
+      baseUnitId: "__none__",
       conversionRate: 1,
       costPrice: 0,
       salePrice: 0,
@@ -131,10 +136,36 @@ export function ProductDialog({
       costMethod: "SIMPLE",
       isActive: true,
     },
+    mode: "onChange",
   });
 
   const isCombo = watch("isCombo");
   const costMethod = watch("costMethod");
+
+  /**
+   * Load categories and units of measure when dialog opens
+   */
+  useEffect(() => {
+    if (open) {
+      const loadOptions = async () => {
+        try {
+          setLoadingOptions(true);
+          const [categoriesData, unitsData] = await Promise.all([
+            getCategories(false), // Only active categories
+            getUnitOfMeasures(false), // Only active units
+          ]);
+          setCategories(categoriesData);
+          setUnits(unitsData);
+        } catch (err) {
+          console.error("Error loading options:", err);
+          // Don't show error to user, just log it
+        } finally {
+          setLoadingOptions(false);
+        }
+      };
+      loadOptions();
+    }
+  }, [open]);
 
   /**
    * Load product data into form when editing
@@ -147,7 +178,7 @@ export function ProductDialog({
       setValue("description", product.description || "");
       setValue("categoryId", product.categoryId);
       setValue("unitId", product.unitId);
-      setValue("baseUnitId", product.baseUnitId || "");
+      setValue("baseUnitId", product.baseUnitId || "__none__");
       setValue("conversionRate", product.conversionRate);
       setValue("costPrice", product.costPrice);
       setValue("salePrice", product.salePrice);
@@ -169,7 +200,7 @@ export function ProductDialog({
         description: "",
         categoryId: "",
         unitId: "",
-        baseUnitId: "",
+        baseUnitId: "__none__",
         conversionRate: 1,
         costPrice: 0,
         salePrice: 0,
@@ -206,6 +237,11 @@ export function ProductDialog({
       setLoading(true);
       setError(null);
 
+      // Normalize baseUnitId: convert "__none__" to undefined
+      const normalizedBaseUnitId = data.baseUnitId && data.baseUnitId !== "__none__" 
+        ? data.baseUnitId 
+        : undefined;
+
       if (isEdit && product) {
         const updateData: UpdateProduct = {
           barcode: data.barcode || undefined,
@@ -213,7 +249,7 @@ export function ProductDialog({
           description: data.description || undefined,
           categoryId: data.categoryId,
           unitId: data.unitId,
-          baseUnitId: data.baseUnitId || undefined,
+          baseUnitId: normalizedBaseUnitId,
           conversionRate: data.conversionRate,
           costPrice: data.costPrice,
           salePrice: data.salePrice,
@@ -233,7 +269,7 @@ export function ProductDialog({
           description: data.description || undefined,
           categoryId: data.categoryId,
           unitId: data.unitId,
-          baseUnitId: data.baseUnitId || undefined,
+          baseUnitId: normalizedBaseUnitId,
           conversionRate: data.conversionRate,
           costPrice: data.costPrice,
           salePrice: data.salePrice,
@@ -350,13 +386,34 @@ export function ProductDialog({
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="categoryId">
-                  ID Danh mục <span className="text-destructive">*</span>
+                  Danh mục <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="categoryId"
-                  {...register("categoryId", { required: "ID danh mục là bắt buộc" })}
-                  placeholder="UUID của danh mục"
-                />
+                <Select
+                  value={watch("categoryId")}
+                  onValueChange={(value) => setValue("categoryId", value)}
+                  disabled={loadingOptions}
+                >
+                  <SelectTrigger id="categoryId">
+                    <SelectValue placeholder="Chọn danh mục" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingOptions ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        Đang tải...
+                      </div>
+                    ) : categories.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        Chưa có danh mục nào
+                      </div>
+                    ) : (
+                      categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
                 {errors.categoryId && (
                   <p className="text-sm text-destructive">{errors.categoryId.message}</p>
                 )}
@@ -364,31 +421,71 @@ export function ProductDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="unitId">
-                  ID Đơn vị tính <span className="text-destructive">*</span>
+                  Đơn vị tính <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="unitId"
-                  {...register("unitId", { required: "ID đơn vị tính là bắt buộc" })}
-                  placeholder="UUID của đơn vị tính"
-                />
+                <Select
+                  value={watch("unitId")}
+                  onValueChange={(value) => setValue("unitId", value)}
+                  disabled={loadingOptions}
+                >
+                  <SelectTrigger id="unitId">
+                    <SelectValue placeholder="Chọn đơn vị tính" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingOptions ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        Đang tải...
+                      </div>
+                    ) : units.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        Chưa có đơn vị tính nào
+                      </div>
+                    ) : (
+                      units.map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
                 {errors.unitId && (
                   <p className="text-sm text-destructive">{errors.unitId.message}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="baseUnitId">ID Đơn vị cơ bản</Label>
-                <Input
-                  id="baseUnitId"
-                  {...register("baseUnitId")}
-                  placeholder="UUID của đơn vị cơ bản"
-                />
+                <Label htmlFor="baseUnitId">Đơn vị cơ bản</Label>
+                <Select
+                  value={watch("baseUnitId") || "__none__"}
+                  onValueChange={(value) => setValue("baseUnitId", value === "__none__" ? undefined : value)}
+                  disabled={loadingOptions}
+                >
+                  <SelectTrigger id="baseUnitId">
+                    <SelectValue placeholder="Chọn đơn vị cơ bản (tùy chọn)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Không có</SelectItem>
+                    {units.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="conversionRate">Tỷ lệ quy đổi</Label>
+                <Label htmlFor="conversionRate">
+                  Tỷ lệ quy đổi
+                  {watch("baseUnitId") && (
+                    <span className="text-muted-foreground text-xs ml-2">
+                      (1 {units.find(u => u.id === watch("unitId"))?.name || "đơn vị"} = ? {units.find(u => u.id === watch("baseUnitId"))?.name || "đơn vị cơ bản"})
+                    </span>
+                  )}
+                </Label>
                 <Input
                   id="conversionRate"
                   type="number"
@@ -397,6 +494,7 @@ export function ProductDialog({
                     valueAsNumber: true,
                     min: { value: 0.01, message: "Tỷ lệ quy đổi phải lớn hơn 0" },
                   })}
+                  placeholder="VD: 12 (1 thùng = 12 chai)"
                 />
                 {errors.conversionRate && (
                   <p className="text-sm text-destructive">{errors.conversionRate.message}</p>

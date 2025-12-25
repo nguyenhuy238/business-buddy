@@ -29,6 +29,33 @@ import {
 } from "@/services/paymentSettingsService";
 import { Loader2 } from "lucide-react";
 
+/**
+ * Common bank codes in Vietnam
+ * Format: { code: "970415", name: "Vietcombank", shortName: "VCB" }
+ */
+const COMMON_BANK_CODES = [
+  { code: "970415", name: "Ngân hàng TMCP Ngoại Thương Việt Nam", shortName: "Vietcombank (VCB)" },
+  { code: "970422", name: "Ngân hàng TMCP Kỹ Thương Việt Nam", shortName: "Techcombank (TCB)" },
+  { code: "970432", name: "Ngân hàng TMCP Việt Nam Thịnh Vượng", shortName: "VPBank (VPB)" },
+  { code: "970436", name: "Ngân hàng TMCP Á Châu", shortName: "ACB" },
+  { code: "970441", name: "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam", shortName: "BIDV" },
+  { code: "970448", name: "Ngân hàng TMCP Sài Gòn Thương Tín", shortName: "Sacombank (STB)" },
+  { code: "970454", name: "Ngân hàng TMCP Quân đội", shortName: "MB Bank (MBB)" },
+  { code: "970458", name: "Ngân hàng TMCP Phát triển Thành phố Hồ Chí Minh", shortName: "HDBank (HDB)" },
+  { code: "970416", name: "Ngân hàng TMCP Công thương Việt Nam", shortName: "Vietinbank (CTG)" },
+  { code: "970423", name: "Ngân hàng TMCP Tiên Phong", shortName: "TPBank (TPB)" },
+  { code: "970427", name: "Ngân hàng TMCP Việt Nam Thịnh Vượng", shortName: "VPBank" },
+  { code: "970429", name: "Ngân hàng TMCP Đông Á", shortName: "DongA Bank (DAB)" },
+  { code: "970430", name: "Ngân hàng TMCP Phương Đông", shortName: "OCB" },
+  { code: "970437", name: "Ngân hàng TMCP Bắc Á", shortName: "BacABank (BAB)" },
+  { code: "970443", name: "Ngân hàng TMCP Sài Gòn - Hà Nội", shortName: "SHB" },
+  { code: "970449", name: "Ngân hàng TMCP Xây dựng Việt Nam", shortName: "VietABank (VAB)" },
+  { code: "970452", name: "Ngân hàng TMCP Nam Á", shortName: "NamABank (NAB)" },
+  { code: "970456", name: "Ngân hàng TMCP Quốc Dân", shortName: "NCB" },
+  { code: "970457", name: "Ngân hàng TMCP Việt Á", shortName: "VietABank" },
+  { code: "970459", name: "Ngân hàng TMCP Bản Việt", shortName: "VietCapitalBank (VCB)" },
+];
+
 interface PaymentSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -98,6 +125,15 @@ export function PaymentSettingsDialog({
       toast.toast({
         title: "Lỗi",
         description: "Vui lòng nhập số tài khoản và tên chủ tài khoản",
+      });
+      return;
+    }
+
+    // Validate Bank Code for VietQR
+    if (formData.paymentMethod === "VietQR" && !formData.bankCode) {
+      toast.toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập mã ngân hàng cho VietQR",
       });
       return;
     }
@@ -208,18 +244,46 @@ export function PaymentSettingsDialog({
             </div>
           )}
 
-          {/* Bank Code (for VietQR) */}
-          {formData.paymentMethod === "VietQR" && (
+          {/* Bank Code (for VietQR and BankTransfer) */}
+          {requiresBankInfo(formData.paymentMethod) && (
             <div className="space-y-2">
-              <Label htmlFor="bankCode">Mã ngân hàng</Label>
-              <Input
-                id="bankCode"
-                value={formData.bankCode}
-                onChange={(e) =>
-                  setFormData({ ...formData, bankCode: e.target.value })
-                }
-                placeholder="Ví dụ: VCB, TCB, VPB"
-              />
+              <Label htmlFor="bankCode">
+                Mã ngân hàng {formData.paymentMethod === "VietQR" ? "*" : "(khuyến nghị)"}
+              </Label>
+              <div className="space-y-2">
+                <Select
+                  value={COMMON_BANK_CODES.find(b => b.code === formData.bankCode) ? formData.bankCode : ""}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setFormData({ ...formData, bankCode: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger id="bankCode">
+                    <SelectValue placeholder="Chọn từ danh sách ngân hàng phổ biến" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMON_BANK_CODES.map((bank) => (
+                      <SelectItem key={bank.code} value={bank.code}>
+                        {bank.shortName} - {bank.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="bankCodeInput"
+                  value={formData.bankCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, bankCode: e.target.value })
+                  }
+                  placeholder="Hoặc nhập mã ngân hàng thủ công (ví dụ: 970415)"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {formData.paymentMethod === "VietQR" 
+                  ? "Cần mã ngân hàng để tạo mã QR có thể quét được"
+                  : "Mã ngân hàng giúp tạo mã QR EMV có thể quét bằng ứng dụng ngân hàng"}
+              </p>
             </div>
           )}
 

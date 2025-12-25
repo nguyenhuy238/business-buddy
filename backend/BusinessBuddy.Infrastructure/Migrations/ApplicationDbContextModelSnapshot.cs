@@ -266,7 +266,7 @@ namespace BusinessBuddy.Infrastructure.Migrations
 
                     b.HasIndex("PaymentMethod", "IsDefault")
                         .IsUnique()
-                        .HasFilter("[IsDefault] = 1 AND [IsDefault] IS NOT NULL");
+                        .HasFilter("[IsDefault] = 1");
 
                     b.ToTable("PaymentSettings");
                 });

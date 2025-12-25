@@ -74,12 +74,32 @@ export interface UpdateProduct {
   costMethod?: string;
 }
 
+/**
+ * Category interface matching backend Category entity
+ */
 export interface Category {
   id: string;
+  code: string;
   name: string;
   parentId?: string;
   color?: string;
   icon?: string;
+  description?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Unit of Measure interface matching backend UnitOfMeasure entity
+ */
+export interface UnitOfMeasure {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface Warehouse {

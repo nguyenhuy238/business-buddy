@@ -436,34 +436,68 @@ export default function POS() {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filteredProducts.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() => addToCart(product)}
-                  className="flex flex-col items-center rounded-xl border bg-card p-4 text-center transition-all hover:border-primary hover:shadow-md active:scale-95"
-                >
-                  <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 overflow-hidden">
-                    {product.thumbnailUrl || product.imageUrl ? (
-                      <img
-                        src={toAbsolute(product.thumbnailUrl ?? product.imageUrl)}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center w-full h-full">
-                        <ShoppingCart className="h-6 w-6 text-primary" />
-                      </div>
+              {filteredProducts.map((product) => {
+                const isLowStock = product.currentStock <= product.minStock;
+                const isOutOfStock = product.currentStock <= 0;
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => addToCart(product)}
+                    disabled={isOutOfStock}
+                    className={cn(
+                      "flex flex-col items-center rounded-xl border bg-card p-4 text-center transition-all hover:border-primary hover:shadow-md active:scale-95",
+                      isOutOfStock && "opacity-50 cursor-not-allowed"
                     )}
-                  </div>
-                  <p className="text-sm font-medium text-foreground line-clamp-2">
-                    {product.name}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-primary">
-                    {formatCurrency(product.salePrice)}
-                  </p>
-                </button>
-              ))}
+                  >
+                    <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 overflow-hidden relative">
+                      {product.thumbnailUrl || product.imageUrl ? (
+                        <img
+                          src={toAbsolute(product.thumbnailUrl ?? product.imageUrl)}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center w-full h-full">
+                          <ShoppingCart className="h-6 w-6 text-primary" />
+                        </div>
+                      )}
+                      {isLowStock && !isOutOfStock && (
+                        <Badge 
+                          variant="destructive" 
+                          className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                        >
+                          !
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono mb-1">
+                      {product.code}
+                    </p>
+                    <p className="text-sm font-medium text-foreground line-clamp-2 mb-1">
+                      {product.name}
+                    </p>
+                    <div className="flex flex-col items-center gap-1 w-full">
+                      <p className="text-xs text-muted-foreground">
+                        Còn lại: {product.currentStock.toLocaleString()} {product.unitName || ""}
+                      </p>
+                      {isOutOfStock && (
+                        <Badge variant="destructive" className="text-xs">
+                          Hết hàng
+                        </Badge>
+                      )}
+                      {isLowStock && !isOutOfStock && (
+                        <Badge variant="outline" className="text-xs border-orange-500 text-orange-600">
+                          Sắp hết
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-primary">
+                      {formatCurrency(product.salePrice)}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           )}
         </ScrollArea>
