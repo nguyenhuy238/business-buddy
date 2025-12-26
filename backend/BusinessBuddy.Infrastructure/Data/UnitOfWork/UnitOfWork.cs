@@ -22,6 +22,7 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<PurchaseOrder>? _purchaseOrders;
     private IRepository<PurchaseOrderItem>? _purchaseOrderItems;
     private IRepository<CashbookEntry>? _cashbookEntries;
+    private IRepository<PaymentSettings>? _paymentSettings;
 
     public UnitOfWork(ApplicationDbContext context)
     {
@@ -69,6 +70,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<CashbookEntry> CashbookEntries =>
         _cashbookEntries ??= new Repository<CashbookEntry>(_context);
+
+    public IRepository<PaymentSettings> PaymentSettings =>
+        _paymentSettings ??= new Repository<PaymentSettings>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

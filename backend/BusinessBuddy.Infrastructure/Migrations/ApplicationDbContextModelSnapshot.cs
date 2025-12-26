@@ -218,6 +218,59 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.ToTable("Customers");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.PaymentSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BankCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("QrTemplate")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentMethod", "IsDefault")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
+
+                    b.ToTable("PaymentSettings");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -255,9 +308,6 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("ThumbnailUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -273,6 +323,9 @@ namespace BusinessBuddy.Infrastructure.Migrations
 
                     b.Property<decimal>("SalePrice")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ThumbnailUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("UnitId")
                         .HasColumnType("uniqueidentifier");

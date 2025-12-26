@@ -154,7 +154,11 @@ public class SaleOrdersController : ControllerBase
 
             await _unitOfWork.SaleOrders.AddAsync(order);
 
-            // Optionally update stock and cashbook / transactions here
+            // Update stock when order is completed
+            if (order.Status == SaleOrderStatus.Completed)
+            {
+                await UpdateStockForSaleOrderAsync(order, now);
+            }
 
             await _unitOfWork.SaveChangesAsync();
 
@@ -193,6 +197,12 @@ public class SaleOrdersController : ControllerBase
             
             if (existing == null) return NotFound();
 
+            // Track status change for stock management
+            var previousStatus = existing.Status;
+            var newStatus = order.Status;
+            var statusChanged = previousStatus != newStatus;
+            var now = DateTime.UtcNow;
+
             // Update basic fields
             existing.CustomerId = order.CustomerId;
             existing.Status = order.Status;
@@ -203,23 +213,74 @@ public class SaleOrdersController : ControllerBase
             existing.PaymentMethod = order.PaymentMethod;
             existing.PaidAmount = order.PaidAmount;
             existing.Notes = order.Notes;
-            existing.CompletedAt = order.CompletedAt;
-            existing.UpdatedAt = DateTime.UtcNow;
+            existing.UpdatedAt = now;
+
+            // Handle status change
+            if (statusChanged)
+            {
+                if (newStatus == SaleOrderStatus.Completed)
+                {
+                    existing.CompletedAt = now;
+                    // Deduct stock if order is being completed
+                    if (previousStatus != SaleOrderStatus.Completed)
+                    {
+                        await UpdateStockForSaleOrderAsync(existing, now);
+                    }
+                }
+                else if ((previousStatus == SaleOrderStatus.Completed) && 
+                         (newStatus == SaleOrderStatus.Cancelled || newStatus == SaleOrderStatus.Refunded))
+                {
+                    // Restore stock if order is being cancelled or refunded
+                    await RestoreStockForSaleOrderAsync(existing, now);
+                }
+            }
 
             // Update items - remove old items and add new ones
             if (order.Items != null)
             {
+                // If status is Completed and items are being changed, restore stock for old items first
+                if (existing.Status == SaleOrderStatus.Completed && previousStatus == SaleOrderStatus.Completed)
+                {
+                    // Restore stock for existing items before they are deleted
+                    await RestoreStockForSaleOrderAsync(existing, now);
+                }
+
                 // Remove existing items
                 foreach (var item in existing.Items.ToList())
                 {
                     await _unitOfWork.SaleOrderItems.DeleteAsync(item);
                 }
 
+                // Clear the items collection to prepare for new items
+                existing.Items.Clear();
+
                 // Add new items
                 foreach (var item in order.Items)
                 {
                     item.SaleOrderId = existing.Id;
-                    await _unitOfWork.SaleOrderItems.AddAsync(item);
+                    item.CreatedAt = now;
+                    existing.Items.Add(item);
+                }
+
+                // If status is Completed, deduct stock for new items
+                if (existing.Status == SaleOrderStatus.Completed)
+                {
+                    // Update stock using the new items from order parameter
+                    // Create a temporary order object with new items for stock deduction
+                    var tempOrderForStock = new SaleOrder
+                    {
+                        Id = existing.Id,
+                        Code = existing.Code,
+                        CreatedBy = existing.CreatedBy,
+                        Items = order.Items.Select(i => new SaleOrderItem
+                        {
+                            ProductId = i.ProductId,
+                            UnitId = i.UnitId,
+                            Quantity = i.Quantity,
+                            CostPrice = i.CostPrice
+                        }).ToList()
+                    };
+                    await UpdateStockForSaleOrderAsync(tempOrderForStock, now);
                 }
             }
 
@@ -256,6 +317,12 @@ public class SaleOrdersController : ControllerBase
             
             if (existing == null) return NotFound();
 
+            // If order was completed, restore stock before deleting
+            if (existing.Status == SaleOrderStatus.Completed)
+            {
+                await RestoreStockForSaleOrderAsync(existing, DateTime.UtcNow);
+            }
+
             // Delete items first
             foreach (var item in existing.Items.ToList())
             {
@@ -272,6 +339,247 @@ public class SaleOrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error deleting sale order {OrderId}", id);
             return StatusCode(500, "An error occurred while deleting the sale order");
+        }
+    }
+
+    /// <summary>
+    /// Updates stock quantities for all items in a completed sale order
+    /// </summary>
+    /// <param name="order">The sale order to process</param>
+    /// <param name="transactionDate">The date/time of the transaction</param>
+    private async Task UpdateStockForSaleOrderAsync(SaleOrder order, DateTime transactionDate)
+    {
+        // Get default warehouse
+        var defaultWarehouse = await _context.Warehouses
+            .FirstOrDefaultAsync(w => w.IsDefault && w.IsActive);
+
+        if (defaultWarehouse == null)
+        {
+            _logger.LogWarning("No default warehouse found. Stock update skipped for order {OrderId}", order.Id);
+            return;
+        }
+
+        // Process each item in the order
+        foreach (var item in order.Items)
+        {
+            try
+            {
+                // Load product with unit information
+                var product = await _context.Products
+                    .Include(p => p.Unit)
+                    .Include(p => p.BaseUnit)
+                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+
+                if (product == null)
+                {
+                    _logger.LogWarning("Product {ProductId} not found for order item {ItemId}", item.ProductId, item.Id);
+                    continue;
+                }
+
+                // Calculate quantity in base unit
+                decimal quantityToDeduct = CalculateQuantityInBaseUnit(
+                    item.Quantity,
+                    item.UnitId,
+                    product.UnitId,
+                    product.BaseUnitId,
+                    product.ConversionRate);
+
+                // Get or create stock record
+                var stock = await _context.Stocks
+                    .FirstOrDefaultAsync(s => s.ProductId == product.Id && s.WarehouseId == defaultWarehouse.Id);
+
+                if (stock == null)
+                {
+                    // Create new stock record if it doesn't exist
+                    stock = new Stock
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = product.Id,
+                        WarehouseId = defaultWarehouse.Id,
+                        Quantity = 0,
+                        ReservedQuantity = 0,
+                        LastUpdatedAt = transactionDate
+                    };
+                    await _unitOfWork.Stocks.AddAsync(stock);
+                }
+
+                // Check if there's enough stock
+                if (stock.Quantity < quantityToDeduct)
+                {
+                    _logger.LogWarning(
+                        "Insufficient stock for product {ProductId}. Available: {Available}, Required: {Required}",
+                        product.Id, stock.Quantity, quantityToDeduct);
+                    // Continue processing but log the warning
+                    // In production, you might want to throw an exception or return an error
+                }
+
+                // Deduct stock quantity
+                stock.Quantity -= quantityToDeduct;
+                if (stock.Quantity < 0)
+                {
+                    stock.Quantity = 0; // Prevent negative stock
+                }
+                stock.LastUpdatedAt = transactionDate;
+                await _unitOfWork.Stocks.UpdateAsync(stock);
+
+                // Create stock transaction record
+                var stockTransaction = new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = product.Id,
+                    WarehouseId = defaultWarehouse.Id,
+                    Type = StockTransactionType.Out,
+                    Quantity = quantityToDeduct,
+                    CostPrice = item.CostPrice,
+                    ReferenceType = "SaleOrder",
+                    ReferenceId = order.Id,
+                    Notes = $"Xuất kho từ đơn hàng {order.Code}",
+                    TransactionDate = transactionDate,
+                    CreatedBy = order.CreatedBy,
+                    CreatedAt = transactionDate
+                };
+                await _unitOfWork.StockTransactions.AddAsync(stockTransaction);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating stock for item {ItemId} in order {OrderId}", item.Id, order.Id);
+                // Continue with next item
+            }
+        }
+    }
+
+    /// <summary>
+    /// Calculates the quantity in base unit for stock deduction
+    /// </summary>
+    /// <param name="quantity">The quantity in the sale unit</param>
+    /// <param name="saleUnitId">The unit ID used in the sale</param>
+    /// <param name="productUnitId">The product's default unit ID</param>
+    /// <param name="baseUnitId">The product's base unit ID (optional)</param>
+    /// <param name="conversionRate">The conversion rate from product unit to base unit</param>
+    /// <returns>Quantity in base unit</returns>
+    private decimal CalculateQuantityInBaseUnit(
+        decimal quantity,
+        Guid saleUnitId,
+        Guid productUnitId,
+        Guid? baseUnitId,
+        decimal conversionRate)
+    {
+        // If product has a base unit and the sale unit is different from base unit
+        if (baseUnitId.HasValue)
+        {
+            // If sale unit is the product's unit (not base unit), convert using conversion rate
+            if (saleUnitId == productUnitId && saleUnitId != baseUnitId.Value)
+            {
+                return quantity * conversionRate;
+            }
+            // If sale unit is already the base unit, no conversion needed
+            if (saleUnitId == baseUnitId.Value)
+            {
+                return quantity;
+            }
+            // If sale unit is different from both product unit and base unit,
+            // try to find a conversion in ProductUnitConversion table
+            // For now, assume 1:1 if no direct match (this could be enhanced)
+            return quantity;
+        }
+
+        // No base unit defined, use quantity as-is
+        return quantity;
+    }
+
+    /// <summary>
+    /// Restores stock quantities for all items in a cancelled or refunded sale order
+    /// </summary>
+    /// <param name="order">The sale order to process</param>
+    /// <param name="transactionDate">The date/time of the transaction</param>
+    private async Task RestoreStockForSaleOrderAsync(SaleOrder order, DateTime transactionDate)
+    {
+        // Get default warehouse
+        var defaultWarehouse = await _context.Warehouses
+            .FirstOrDefaultAsync(w => w.IsDefault && w.IsActive);
+
+        if (defaultWarehouse == null)
+        {
+            _logger.LogWarning("No default warehouse found. Stock restoration skipped for order {OrderId}", order.Id);
+            return;
+        }
+
+        // Load order items with product information
+        var items = await _context.SaleOrderItems
+            .Include(i => i.Product)
+                .ThenInclude(p => p.Unit)
+            .Include(i => i.Product)
+                .ThenInclude(p => p.BaseUnit)
+            .Where(i => i.SaleOrderId == order.Id)
+            .ToListAsync();
+
+        // Process each item in the order
+        foreach (var item in items)
+        {
+            try
+            {
+                var product = item.Product;
+                if (product == null)
+                {
+                    _logger.LogWarning("Product {ProductId} not found for order item {ItemId}", item.ProductId, item.Id);
+                    continue;
+                }
+
+                // Calculate quantity in base unit
+                decimal quantityToRestore = CalculateQuantityInBaseUnit(
+                    item.Quantity,
+                    item.UnitId,
+                    product.UnitId,
+                    product.BaseUnitId,
+                    product.ConversionRate);
+
+                // Get or create stock record
+                var stock = await _context.Stocks
+                    .FirstOrDefaultAsync(s => s.ProductId == product.Id && s.WarehouseId == defaultWarehouse.Id);
+
+                if (stock == null)
+                {
+                    // Create new stock record if it doesn't exist
+                    stock = new Stock
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = product.Id,
+                        WarehouseId = defaultWarehouse.Id,
+                        Quantity = 0,
+                        ReservedQuantity = 0,
+                        LastUpdatedAt = transactionDate
+                    };
+                    await _unitOfWork.Stocks.AddAsync(stock);
+                }
+
+                // Restore stock quantity
+                stock.Quantity += quantityToRestore;
+                stock.LastUpdatedAt = transactionDate;
+                await _unitOfWork.Stocks.UpdateAsync(stock);
+
+                // Create stock transaction record for restoration
+                var stockTransaction = new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = product.Id,
+                    WarehouseId = defaultWarehouse.Id,
+                    Type = StockTransactionType.In,
+                    Quantity = quantityToRestore,
+                    CostPrice = item.CostPrice,
+                    ReferenceType = "SaleOrder",
+                    ReferenceId = order.Id,
+                    Notes = $"Hoàn trả hàng từ đơn hàng {order.Code}",
+                    TransactionDate = transactionDate,
+                    CreatedBy = order.CreatedBy,
+                    CreatedAt = transactionDate
+                };
+                await _unitOfWork.StockTransactions.AddAsync(stockTransaction);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restoring stock for item {ItemId} in order {OrderId}", item.Id, order.Id);
+                // Continue with next item
+            }
         }
     }
 }

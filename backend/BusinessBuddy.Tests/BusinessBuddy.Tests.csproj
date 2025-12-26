@@ -1,20 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
-    <PackageReference Include="Moq" Version="4.18.4" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
-    <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.2.2" />
-  </ItemGroup>
+	<ItemGroup>
+		<!-- Use an available Microsoft.NET.Test.Sdk version -->
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+		<PackageReference Include="xunit" Version="2.5.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+		<PackageReference Include="Moq" Version="4.18.4" />
+		<!-- Align ImageSharp with Application project -->
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+		<!-- Align Microsoft.AspNetCore.Http with Application project -->
+		<PackageReference Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\BusinessBuddy.API\BusinessBuddy.API.csproj" />
-    <ProjectReference Include="..\BusinessBuddy.Application\BusinessBuddy.Application.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\BusinessBuddy.API\BusinessBuddy.API.csproj" />
+		<ProjectReference Include="..\BusinessBuddy.Application\BusinessBuddy.Application.csproj" />
+	</ItemGroup>
 </Project>
+
+
+

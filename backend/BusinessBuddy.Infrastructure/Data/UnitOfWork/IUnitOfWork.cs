@@ -19,6 +19,7 @@ public interface IUnitOfWork : IDisposable
     IRepository<PurchaseOrder> PurchaseOrders { get; }
     IRepository<PurchaseOrderItem> PurchaseOrderItems { get; }
     IRepository<CashbookEntry> CashbookEntries { get; }
+    IRepository<PaymentSettings> PaymentSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

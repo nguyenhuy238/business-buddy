@@ -26,6 +26,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
     public DbSet<CashbookEntry> CashbookEntries { get; set; }
+    public DbSet<PaymentSettings> PaymentSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -239,6 +240,18 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             // Note: ReferenceType and ReferenceId are stored as strings/guids for flexibility
             // Navigation properties are optional and may need manual handling in code
+        });
+
+        // PaymentSettings
+        modelBuilder.Entity<PaymentSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // Ensure only one default per payment method
+            // Note: Using filtered unique index to allow multiple non-default entries
+            // The filter ensures uniqueness only when IsDefault = 1
+            entity.HasIndex(e => new { e.PaymentMethod, e.IsDefault })
+                  .IsUnique()
+                  .HasFilter("[IsDefault] = 1");
         });
     }
 }
