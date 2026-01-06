@@ -218,6 +218,73 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.ToTable("Customers");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.PayableTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BalanceBefore")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("CashbookEntryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PurchaseOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReferenceType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("TransactionDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CashbookEntryId");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.HasIndex("SupplierId", "TransactionDate");
+
+                    b.ToTable("PayableTransactions");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.PaymentSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -502,6 +569,73 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.HasIndex("UnitId");
 
                     b.ToTable("PurchaseOrderItems");
+                });
+
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReceivableTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BalanceBefore")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("CashbookEntryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReferenceType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("SaleOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("TransactionDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CashbookEntryId");
+
+                    b.HasIndex("SaleOrderId");
+
+                    b.HasIndex("CustomerId", "TransactionDate");
+
+                    b.ToTable("ReceivableTransactions");
                 });
 
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.SaleOrder", b =>
@@ -918,6 +1052,29 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.PayableTransaction", b =>
+                {
+                    b.HasOne("BusinessBuddy.Domain.Entities.CashbookEntry", "CashbookEntry")
+                        .WithMany()
+                        .HasForeignKey("CashbookEntryId");
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.PurchaseOrder", "PurchaseOrder")
+                        .WithMany()
+                        .HasForeignKey("PurchaseOrderId");
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.Supplier", "Supplier")
+                        .WithMany("PayableTransactions")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CashbookEntry");
+
+                    b.Navigation("PurchaseOrder");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.Product", b =>
                 {
                     b.HasOne("BusinessBuddy.Domain.Entities.UnitOfMeasure", "BaseUnit")
@@ -1011,6 +1168,29 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.Navigation("PurchaseOrder");
 
                     b.Navigation("Unit");
+                });
+
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReceivableTransaction", b =>
+                {
+                    b.HasOne("BusinessBuddy.Domain.Entities.CashbookEntry", "CashbookEntry")
+                        .WithMany()
+                        .HasForeignKey("CashbookEntryId");
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.Customer", "Customer")
+                        .WithMany("ReceivableTransactions")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.SaleOrder", "SaleOrder")
+                        .WithMany()
+                        .HasForeignKey("SaleOrderId");
+
+                    b.Navigation("CashbookEntry");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("SaleOrder");
                 });
 
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.SaleOrder", b =>
@@ -1123,6 +1303,8 @@ namespace BusinessBuddy.Infrastructure.Migrations
 
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.Customer", b =>
                 {
+                    b.Navigation("ReceivableTransactions");
+
                     b.Navigation("SaleOrders");
                 });
 
@@ -1164,6 +1346,8 @@ namespace BusinessBuddy.Infrastructure.Migrations
 
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.Supplier", b =>
                 {
+                    b.Navigation("PayableTransactions");
+
                     b.Navigation("PurchaseOrders");
                 });
 

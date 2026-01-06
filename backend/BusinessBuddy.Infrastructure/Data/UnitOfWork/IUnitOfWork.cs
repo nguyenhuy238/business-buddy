@@ -20,6 +20,8 @@ public interface IUnitOfWork : IDisposable
     IRepository<PurchaseOrderItem> PurchaseOrderItems { get; }
     IRepository<CashbookEntry> CashbookEntries { get; }
     IRepository<PaymentSettings> PaymentSettings { get; }
+    IRepository<ReceivableTransaction> ReceivableTransactions { get; }
+    IRepository<PayableTransaction> PayableTransactions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

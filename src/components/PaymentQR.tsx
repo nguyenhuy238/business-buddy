@@ -67,6 +67,10 @@ export function PaymentQR({
    * Follows EMV QR Code specification for Vietnam (VietQR standard)
    * Format: 00020101021238[Bank Info]54[Amount]58[Country]59[Merchant]62[Additional]63[CRC]
    * 
+   * According to VietQR standard:
+   * - Bank Code must be 3 digits (e.g., 970422 for Vietcombank)
+   * - Merchant Account Information (38) contains: ID 00 (Bank Code) + ID 01 (Account Number)
+   * 
    * @returns EMV QR Code string that can be scanned by banking apps
    */
   const generateVietQRString = (): string => {
@@ -74,24 +78,42 @@ export function PaymentQR({
       return "";
     }
 
-    const bankCode = settings.bankCode;
-    const accountNumber = bankAccount;
-    const merchantName = accountName || "Merchant";
+    // Normalize bank code - ensure it's numeric and properly formatted
+    const bankCode = settings.bankCode.trim().replace(/\D/g, "");
+    if (bankCode.length === 0) {
+      return "";
+    }
+    
+    const accountNumber = bankAccount.trim();
+    if (accountNumber.length === 0) {
+      return "";
+    }
+    
+    const merchantName = (accountName || "Merchant").trim();
     const transactionAmount = Math.round(amount).toString();
     const content = orderCode ? `Thanh toan don ${orderCode}` : `Thanh toan ${formatCurrency(amount)}`;
     
     // EMV QR Code structure
-    // Payload Format Indicator (00) + Point of Initiation Method (01)
+    // Payload Format Indicator (00): 01 = EMV QR Code
     let qrString = "000201";
     
     // Point of Initiation Method (01): 12 = dynamic QR (with amount)
     qrString += "010212";
     
     // Merchant Account Information (38)
-    // Format: 00[Bank Code]01[Account Number]
-    const bankInfoLength = String(bankCode.length + accountNumber.length + 4).padStart(2, "0");
-    const bankInfo = `00${String(bankCode.length).padStart(2, "0")}${bankCode}01${String(accountNumber.length).padStart(2, "0")}${accountNumber}`;
-    qrString += `38${String(bankInfo.length).padStart(2, "0")}${bankInfo}`;
+    // Format: 00[Bank Code Length][Bank Code]01[Account Number Length][Account Number]
+    // ID 00: Bank code (2-digit length + code)
+    // ID 01: Account number (2-digit length + number)
+    // Note: Length values are the byte length of the value (for ASCII, same as character count)
+    const bankCodeLength = bankCode.length;
+    const accountNumberLength = accountNumber.length;
+    
+    // Build bank info: ID 00 (Bank Code) + ID 01 (Account Number)
+    const bankInfo = `00${String(bankCodeLength).padStart(2, "0")}${bankCode}01${String(accountNumberLength).padStart(2, "0")}${accountNumber}`;
+    
+    // Field 38 length is the byte length of bankInfo
+    const bankInfoLength = bankInfo.length;
+    qrString += `38${String(bankInfoLength).padStart(2, "0")}${bankInfo}`;
     
     // Transaction Currency (53): 704 = VND
     qrString += "5303704";
@@ -103,41 +125,92 @@ export function PaymentQR({
     // Country Code (58): VN
     qrString += "5802VN";
     
-    // Merchant Name (59)
-    const merchantNameStr = merchantName.substring(0, 25); // Max 25 chars
-    qrString += `59${String(merchantNameStr.length).padStart(2, "0")}${merchantNameStr}`;
+    // Merchant Name (59) - Max 25 characters
+    // Truncate to ensure it fits within byte limit
+    let merchantNameStr = merchantName;
+    while (getByteLength(merchantNameStr) > 25 && merchantNameStr.length > 0) {
+      merchantNameStr = merchantNameStr.substring(0, merchantNameStr.length - 1);
+    }
+    const merchantNameLength = getByteLength(merchantNameStr);
+    qrString += `59${String(merchantNameLength).padStart(2, "0")}${merchantNameStr}`;
     
     // Additional Data Field Template (62)
-    // Format: 08[Content/Reference Number]
-    const contentStr = content.substring(0, 25); // Max 25 chars
-    const additionalData = `08${String(contentStr.length).padStart(2, "0")}${contentStr}`;
-    qrString += `62${String(additionalData.length).padStart(2, "0")}${additionalData}`;
+    // Format: 08[Content/Reference Number] - Max 25 characters
+    let contentStr = content;
+    while (getByteLength(contentStr) > 25 && contentStr.length > 0) {
+      contentStr = contentStr.substring(0, contentStr.length - 1);
+    }
+    const contentLength = getByteLength(contentStr);
+    const additionalData = `08${String(contentLength).padStart(2, "0")}${contentStr}`;
+    const additionalDataLength = getByteLength(additionalData);
+    qrString += `62${String(additionalDataLength).padStart(2, "0")}${additionalData}`;
     
     // CRC (63) - Cyclic Redundancy Check
-    // Calculate CRC16-CCITT for the string (before adding CRC field)
-    const crc = calculateCRC16(qrString + "6304");
+    // Calculate CRC16-CCITT for the string BEFORE adding CRC field
+    // According to EMV QR Code spec, CRC is calculated on the payload without the CRC field
+    const crc = calculateCRC16(qrString);
     qrString += `6304${crc}`;
     
     return qrString;
   };
 
   /**
+   * Get UTF-8 byte length of a string
+   * EMV QR Code requires length to be in bytes, not characters
+   * 
+   * @param str - String to get byte length for
+   * @returns Byte length of the string in UTF-8 encoding
+   */
+  const getByteLength = (str: string): number => {
+    // Use TextEncoder to get accurate UTF-8 byte length
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(str).length;
+    }
+    // Fallback: approximate for ASCII, but may be inaccurate for UTF-8
+    // For most cases with Vietnamese characters, this should work
+    let byteLength = 0;
+    for (let i = 0; i < str.length; i++) {
+      const charCode = str.charCodeAt(i);
+      if (charCode < 0x80) {
+        byteLength += 1;
+      } else if (charCode < 0x800) {
+        byteLength += 2;
+      } else if (charCode < 0xD800 || charCode >= 0xE000) {
+        byteLength += 3;
+      } else {
+        // Surrogate pair
+        byteLength += 4;
+        i++; // Skip next character as it's part of the pair
+      }
+    }
+    return byteLength;
+  };
+
+  /**
    * Calculate CRC16-CCITT checksum for EMV QR Code
+   * Uses standard CRC16-CCITT algorithm (polynomial 0x1021, initial value 0xFFFF)
+   * 
    * @param data - String to calculate CRC for
-   * @returns 4-character hex CRC value
+   * @returns 4-character hex CRC value (uppercase, zero-padded)
    */
   const calculateCRC16 = (data: string): string => {
     let crc = 0xFFFF;
+    
+    // Process each byte in the string
     for (let i = 0; i < data.length; i++) {
-      crc ^= data.charCodeAt(i) << 8;
+      const byte = data.charCodeAt(i);
+      crc ^= (byte << 8);
+      
+      // Process 8 bits
       for (let j = 0; j < 8; j++) {
         if (crc & 0x8000) {
-          crc = (crc << 1) ^ 0x1021;
+          crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
         } else {
-          crc <<= 1;
+          crc = (crc << 1) & 0xFFFF;
         }
       }
     }
+    
     return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, "0");
   };
 
@@ -164,9 +237,28 @@ export function PaymentQR({
       qrString += "010212";
       
       // Merchant Account Information (38)
-      // Format: 00[Bank Code]01[Account Number]
-      const bankInfo = `00${String(bankCode.length).padStart(2, "0")}${bankCode}01${String(accountNumber.length).padStart(2, "0")}${accountNumber}`;
-      qrString += `38${String(bankInfo.length).padStart(2, "0")}${bankInfo}`;
+      // Format: 00[Bank Code Length][Bank Code]01[Account Number Length][Account Number]
+      // ID 00: Bank code (2-digit length + code)
+      // ID 01: Account number (2-digit length + number)
+      // Normalize bank code - ensure it's numeric
+      const normalizedBankCode = bankCode.trim().replace(/\D/g, "");
+      if (normalizedBankCode.length === 0) {
+        // Fallback to text format if bank code is invalid
+        const transferInfo = [
+          `Bank: ${bankName || "N/A"}`,
+          `Account: ${bankAccount}`,
+          `Name: ${accountName}`,
+          `Amount: ${Math.round(amount)} VND`,
+          orderCode ? `Order: ${orderCode}` : ""
+        ].filter(Boolean).join("\n");
+        return transferInfo;
+      }
+      
+      const bankCodeLength = normalizedBankCode.length;
+      const accountNumberLength = accountNumber.length;
+      const bankInfo = `00${String(bankCodeLength).padStart(2, "0")}${normalizedBankCode}01${String(accountNumberLength).padStart(2, "0")}${accountNumber}`;
+      const bankInfoLength = bankInfo.length;
+      qrString += `38${String(bankInfoLength).padStart(2, "0")}${bankInfo}`;
       
       // Transaction Currency (53): 704 = VND
       qrString += "5303704";
@@ -177,17 +269,27 @@ export function PaymentQR({
       // Country Code (58): VN
       qrString += "5802VN";
       
-      // Merchant Name (59)
-      const merchantNameStr = merchantName.substring(0, 25); // Max 25 chars
-      qrString += `59${String(merchantNameStr.length).padStart(2, "0")}${merchantNameStr}`;
+      // Merchant Name (59) - Max 25 bytes
+      let merchantNameStr = merchantName.trim();
+      while (getByteLength(merchantNameStr) > 25 && merchantNameStr.length > 0) {
+        merchantNameStr = merchantNameStr.substring(0, merchantNameStr.length - 1);
+      }
+      const merchantNameLength = getByteLength(merchantNameStr);
+      qrString += `59${String(merchantNameLength).padStart(2, "0")}${merchantNameStr}`;
       
-      // Additional Data Field Template (62)
-      const contentStr = content.substring(0, 25); // Max 25 chars
-      const additionalData = `08${String(contentStr.length).padStart(2, "0")}${contentStr}`;
-      qrString += `62${String(additionalData.length).padStart(2, "0")}${additionalData}`;
+      // Additional Data Field Template (62) - Max 25 bytes
+      let contentStr = content;
+      while (getByteLength(contentStr) > 25 && contentStr.length > 0) {
+        contentStr = contentStr.substring(0, contentStr.length - 1);
+      }
+      const contentLength = getByteLength(contentStr);
+      const additionalData = `08${String(contentLength).padStart(2, "0")}${contentStr}`;
+      const additionalDataLength = getByteLength(additionalData);
+      qrString += `62${String(additionalDataLength).padStart(2, "0")}${additionalData}`;
       
       // CRC (63) - Cyclic Redundancy Check
-      const crc = calculateCRC16(qrString + "6304");
+      // Calculate CRC16-CCITT for the string BEFORE adding CRC field
+      const crc = calculateCRC16(qrString);
       qrString += `6304${crc}`;
       
       return qrString;
