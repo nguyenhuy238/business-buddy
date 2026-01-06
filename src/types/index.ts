@@ -240,3 +240,145 @@ export interface RevenueByTime {
   revenue: number;
   orders: number;
 }
+
+/**
+ * Receivable interface matching backend ReceivableDto
+ */
+export interface Receivable {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  customerPhone?: string;
+  totalReceivables: number;
+  overdueAmount: number;
+  paymentDueDate?: string;
+  overdueDays: number;
+  isOverdue: boolean;
+}
+
+/**
+ * Receivable transaction interface matching backend ReceivableTransactionDto
+ */
+export interface ReceivableTransaction {
+  id: string;
+  customerId: string;
+  customerName: string;
+  type: 'Invoice' | 'Payment' | 'Adjustment' | 'Refund';
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  description: string;
+  paymentMethod: PaymentMethod;
+  dueDate?: string;
+  transactionDate: string;
+  referenceType?: string;
+  referenceId?: string;
+  referenceCode?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/**
+ * Create receivable payment DTO
+ */
+export interface CreateReceivablePayment {
+  customerId: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  description?: string;
+  transactionDate?: string;
+  createdBy?: string;
+}
+
+/**
+ * Create receivable adjustment DTO
+ */
+export interface CreateReceivableAdjustment {
+  customerId: string;
+  amount: number; // Positive for increase, negative for decrease
+  description?: string;
+  transactionDate?: string;
+  createdBy?: string;
+}
+
+/**
+ * Payable interface matching backend PayableDto
+ */
+export interface Payable {
+  supplierId: string;
+  supplierCode: string;
+  supplierName: string;
+  supplierPhone?: string;
+  totalPayables: number;
+  overdueAmount: number;
+  paymentDueDate?: string;
+  overdueDays: number;
+  isOverdue: boolean;
+}
+
+/**
+ * Payable transaction interface matching backend PayableTransactionDto
+ */
+export interface PayableTransaction {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  type: 'Invoice' | 'Payment' | 'Adjustment' | 'Refund';
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  description: string;
+  paymentMethod: PaymentMethod;
+  dueDate?: string;
+  transactionDate: string;
+  referenceType?: string;
+  referenceId?: string;
+  referenceCode?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+/**
+ * Create payable payment DTO
+ */
+export interface CreatePayablePayment {
+  supplierId: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  description?: string;
+  transactionDate?: string;
+  createdBy?: string;
+}
+
+/**
+ * Create payable adjustment DTO
+ */
+export interface CreatePayableAdjustment {
+  supplierId: string;
+  amount: number; // Positive for increase, negative for decrease
+  description?: string;
+  transactionDate?: string;
+  createdBy?: string;
+}
+
+/**
+ * Receivable statistics interface
+ */
+export interface ReceivableStatistics {
+  totalReceivables: number;
+  overdueReceivables: number;
+  overdueCount: number;
+  totalCustomersWithReceivables: number;
+  currentReceivables: number;
+}
+
+/**
+ * Payable statistics interface
+ */
+export interface PayableStatistics {
+  totalPayables: number;
+  overduePayables: number;
+  overdueCount: number;
+  totalSuppliersWithPayables: number;
+  currentPayables: number;
+}

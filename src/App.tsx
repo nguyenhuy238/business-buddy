@@ -11,6 +11,8 @@ import POS from "@/pages/POS";
 import Customers from "@/pages/Customers";
 import Suppliers from "@/pages/Suppliers";
 import Cashbook from "@/pages/Cashbook";
+import Receivables from "@/pages/Receivables";
+import Payables from "@/pages/Payables";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/NotFound";
@@ -36,6 +38,8 @@ const App = () => (
               <Route path="/customers" element={<Customers />} />
               <Route path="/suppliers" element={<Suppliers />} />
               <Route path="/cashbook" element={<Cashbook />} />
+              <Route path="/receivables" element={<Receivables />} />
+              <Route path="/payables" element={<Payables />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Route>

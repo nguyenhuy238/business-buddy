@@ -19,5 +19,6 @@ public class Supplier
 
     // Navigation properties
     public virtual ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
+    public virtual ICollection<PayableTransaction> PayableTransactions { get; set; } = new List<PayableTransaction>();
 }
 

@@ -30,5 +30,6 @@ public class Customer
 
     // Navigation properties
     public virtual ICollection<SaleOrder> SaleOrders { get; set; } = new List<SaleOrder>();
+    public virtual ICollection<ReceivableTransaction> ReceivableTransactions { get; set; } = new List<ReceivableTransaction>();
 }
 

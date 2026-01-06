@@ -27,6 +27,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
     public DbSet<CashbookEntry> CashbookEntries { get; set; }
     public DbSet<PaymentSettings> PaymentSettings { get; set; }
+    public DbSet<ReceivableTransaction> ReceivableTransactions { get; set; }
+    public DbSet<PayableTransaction> PayableTransactions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -252,6 +254,30 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.PaymentMethod, e.IsDefault })
                   .IsUnique()
                   .HasFilter("[IsDefault] = 1");
+        });
+
+        // ReceivableTransaction
+        modelBuilder.Entity<ReceivableTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Customer)
+                  .WithMany(e => e.ReceivableTransactions)
+                  .HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            // Note: SaleOrder relationship is optional and handled manually via ReferenceId
+            entity.HasIndex(e => new { e.CustomerId, e.TransactionDate });
+        });
+
+        // PayableTransaction
+        modelBuilder.Entity<PayableTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Supplier)
+                  .WithMany(e => e.PayableTransactions)
+                  .HasForeignKey(e => e.SupplierId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            // Note: PurchaseOrder relationship is optional and handled manually via ReferenceId
+            entity.HasIndex(e => new { e.SupplierId, e.TransactionDate });
         });
     }
 }
