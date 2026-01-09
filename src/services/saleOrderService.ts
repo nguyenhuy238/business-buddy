@@ -3,7 +3,7 @@
  * Handles sale order API calls
  */
 import { apiClient } from "./api";
-import type { SaleOrder } from "@/types";
+import type { PaymentMethod, SaleOrder } from "@/types";
 
 /**
  * Sale orders response with pagination
@@ -87,5 +87,48 @@ export async function updateSaleOrder(id: string, order: Partial<SaleOrder>): Pr
  */
 export async function deleteSaleOrder(id: string): Promise<void> {
   await apiClient.delete<void>(`/SaleOrders/${id}`);
+}
+
+/**
+ * DTO for a single refunded line in a sale order
+ */
+export interface SaleOrderRefundItemRequest {
+  orderItemId: string;
+  quantity: number;
+}
+
+/**
+ * Request payload for creating a partial refund on a sale order
+ * Mirrors CreateSaleOrderRefundDto on the backend.
+ */
+export interface CreateSaleOrderRefundRequest {
+  orderId: string;
+  items: SaleOrderRefundItemRequest[];
+  paymentMethod: PaymentMethod;
+  updateReceivables: boolean;
+  createCashbookEntry: boolean;
+  description: string;
+  transactionDate: string;
+  createdBy: string;
+}
+
+/**
+ * Response payload for partial refund
+ */
+export interface SaleOrderRefundResponse {
+  message: string;
+  refundAmount: number;
+}
+
+/**
+ * Create a partial refund (return items) for a completed sale order.
+ * @param orderId - ID of the sale order
+ * @param payload - Refund details (lines and quantities)
+ */
+export async function createSaleOrderRefund(
+  orderId: string,
+  payload: CreateSaleOrderRefundRequest,
+): Promise<SaleOrderRefundResponse> {
+  return apiClient.post<SaleOrderRefundResponse>(`/SaleOrders/${orderId}/refund`, payload);
 }
 

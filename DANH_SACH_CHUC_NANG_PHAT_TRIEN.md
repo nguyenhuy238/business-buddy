@@ -723,18 +723,18 @@
 
 ### ⚠️ CÁC CHỨC NĂNG ĐANG PHÁT TRIỂN/CHƯA HOÀN THIỆN
 
-- ⚠️ Quản lý đơn nhập hàng (Purchase Orders) - chỉ có entity, chưa có UI
+- ⚠️ Quản lý đơn nhập hàng (Purchase Orders) - chỉ có entity, chưa có UI (Đã implement)
 - ⚠️ Quản lý tồn kho nâng cao (điều chỉnh, chuyển kho, lô hàng)
 - ⚠️ Quản lý kho hàng (chỉ có entity)
-- ⚠️ Quản lý đơn hàng bán (chưa có trang quản lý đầy đủ, chỉnh sửa, hủy, trả hàng)
+- ⚠️ Quản lý đơn hàng bán (chưa có trang quản lý đầy đủ, chỉnh sửa, hủy, trả hàng) (Đã Implement)
 - ⚠️ Quét barcode thực tế (chỉ có tìm kiếm bằng code)
-- ⚠️ Chuyển đổi đơn vị tính trong POS
+- ⚠️ Chuyển đổi đơn vị tính trong POS (Đã Implement)
 - ⚠️ Xác nhận thanh toán tự động (chưa có webhook)
 - ⚠️ Hệ thống người dùng và phân quyền (chưa có authentication)
 
 ### ❌ CÁC CHỨC NĂNG CHƯA PHÁT TRIỂN
 
-- ❌ Quản lý công nợ chi tiết (thu nợ, trả nợ, cảnh báo)
+- ❌ Quản lý công nợ chi tiết (thu nợ, trả nợ, cảnh báo) (Đã implemet)
 - ❌ Trả hàng và hoàn tiền
 - ❌ Combo/Bundle sản phẩm
 - ❌ Tích điểm và đổi điểm

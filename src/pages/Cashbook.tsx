@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { getCashbookEntries } from '@/services/cashbookService';
+import { getCashbookEntries, getCashbookStatistics, type CashbookStats } from '@/services/cashbookService';
 import type { CashbookEntry } from '@/types';
 import { CashbookDialog } from '@/components/dialogs/CashbookDialog';
 
@@ -78,35 +78,49 @@ const paymentLabels: Record<string, string> = {
 
 export default function Cashbook() {
   const [entries, setEntries] = useState<CashbookEntry[]>([]);
+  const [stats, setStats] = useState<CashbookStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
   const [dialogType, setDialogType] = useState<'Income' | 'Expense'>('Income');
 
   /**
-   * Load cashbook entries from API
+   * Load cashbook entries and statistics from API
    */
-  const loadEntries = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getCashbookEntries();
-      setEntries(data);
+      
+      // Prepare date filters
+      const from = dateFrom ? new Date(dateFrom) : undefined;
+      const to = dateTo ? new Date(dateTo) : undefined;
+      
+      // Load entries and statistics in parallel
+      const [entriesData, statsData] = await Promise.all([
+        getCashbookEntries(from, to),
+        getCashbookStatistics(from, to)
+      ]);
+      
+      setEntries(entriesData);
+      setStats(statsData);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Không thể tải dữ liệu sổ quỹ";
       setError(errorMessage);
-      console.error("Error loading cashbook entries:", err);
+      console.error("Error loading cashbook data:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
-    loadEntries();
-  }, []);
+    loadData();
+  }, [loadData]);
 
   /**
    * Filter entries based on search query and type filter
@@ -120,15 +134,18 @@ export default function Cashbook() {
   });
 
   /**
-   * Calculate statistics from entries
+   * Get statistics from API or calculate from filtered entries
    */
-  const totalIncome = entries
+  const totalIncome = stats?.totalIncome ?? entries
     .filter((e) => e.type === 'Income')
     .reduce((sum, e) => sum + e.amount, 0);
-  const totalExpense = entries
+  const totalExpense = stats?.totalExpense ?? entries
     .filter((e) => e.type === 'Expense')
     .reduce((sum, e) => sum + e.amount, 0);
-  const balance = totalIncome - totalExpense;
+  const balance = stats?.balance ?? (totalIncome - totalExpense);
+  const todayIncome = stats?.todayIncome ?? 0;
+  const todayExpense = stats?.todayExpense ?? 0;
+  const todayBalance = stats?.todayBalance ?? (todayIncome - todayExpense);
 
   return (
     <div className="min-h-screen">
@@ -161,9 +178,11 @@ export default function Cashbook() {
                 <TrendingUp className="h-5 w-5 text-success" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Tổng thu hôm nay</p>
+                <p className="text-sm text-muted-foreground">
+                  {dateFrom || dateTo ? "Tổng thu" : "Tổng thu hôm nay"}
+                </p>
                 <p className="text-2xl font-bold text-success">
-                  +{formatCurrency(totalIncome)}
+                  +{formatCurrency(dateFrom || dateTo ? totalIncome : todayIncome)}
                 </p>
               </div>
             </div>
@@ -174,9 +193,11 @@ export default function Cashbook() {
                 <TrendingDown className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Tổng chi hôm nay</p>
+                <p className="text-sm text-muted-foreground">
+                  {dateFrom || dateTo ? "Tổng chi" : "Tổng chi hôm nay"}
+                </p>
                 <p className="text-2xl font-bold text-destructive">
-                  -{formatCurrency(totalExpense)}
+                  -{formatCurrency(dateFrom || dateTo ? totalExpense : todayExpense)}
                 </p>
               </div>
             </div>
@@ -187,8 +208,12 @@ export default function Cashbook() {
                 <Calendar className="h-5 w-5 text-info" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Số giao dịch</p>
-                <p className="text-2xl font-bold">{entries.length}</p>
+                <p className="text-sm text-muted-foreground">
+                  {dateFrom || dateTo ? "Số giao dịch" : "Giao dịch hôm nay"}
+                </p>
+                <p className="text-2xl font-bold">
+                  {dateFrom || dateTo ? entries.length : (stats?.todayTransactions ?? 0)}
+                </p>
               </div>
             </div>
           </div>
@@ -196,7 +221,7 @@ export default function Cashbook() {
 
         {/* Toolbar */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-1 gap-3">
+          <div className="flex flex-1 flex-wrap gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -216,6 +241,34 @@ export default function Cashbook() {
                 <SelectItem value="expense">Chi</SelectItem>
               </SelectContent>
             </Select>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                placeholder="Từ ngày"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-40"
+              />
+              <Input
+                type="date"
+                placeholder="Đến ngày"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-40"
+              />
+              {(dateFrom || dateTo) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setDateFrom('');
+                    setDateTo('');
+                  }}
+                >
+                  Xóa bộ lọc
+                </Button>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
@@ -378,7 +431,7 @@ export default function Cashbook() {
         entry={selectedEntry}
         defaultType={dialogType}
         onSuccess={() => {
-          loadEntries();
+          loadData();
           setSelectedEntry(null);
         }}
       />

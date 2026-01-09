@@ -26,6 +26,258 @@ public class SaleOrdersController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>
+    /// Create a partial refund for a completed sale order.
+    /// This will:
+    /// - Restore stock for the returned quantities
+    /// - Optionally create a receivable transaction for credit sales
+    /// - Optionally create a cashbook expense entry for cash/bank refunds
+    /// </summary>
+    [HttpPost("{id:guid}/refund")]
+    public async Task<IActionResult> CreatePartialRefund(Guid id, [FromBody] CreateSaleOrderRefundDto dto)
+    {
+        if (dto == null || dto.Items == null || dto.Items.Count == 0)
+        {
+            return BadRequest("Refund must contain at least one item");
+        }
+
+        if (dto.OrderId != Guid.Empty && dto.OrderId != id)
+        {
+            return BadRequest("Order id mismatch");
+        }
+
+        try
+        {
+            var order = await _context.SaleOrders
+                .Include(o => o.Items)
+                .Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+            {
+                return NotFound("Sale order not found");
+            }
+
+            if (order.Status != SaleOrderStatus.Completed)
+            {
+                return BadRequest("Only completed orders can be partially refunded");
+            }
+
+            var now = dto.TransactionDate == default ? DateTime.UtcNow : dto.TransactionDate;
+
+            // Build a lookup for existing items
+            var itemLookup = order.Items.ToDictionary(i => i.Id, i => i);
+
+            decimal totalRefundAmount = 0;
+
+            foreach (var refundItem in dto.Items)
+            {
+                if (!itemLookup.TryGetValue(refundItem.OrderItemId, out var orderItem))
+                {
+                    return BadRequest($"Order item {refundItem.OrderItemId} not found in order");
+                }
+
+                if (refundItem.Quantity <= 0)
+                {
+                    return BadRequest("Refund quantity must be greater than zero");
+                }
+
+                if (refundItem.Quantity > orderItem.Quantity)
+                {
+                    return BadRequest("Refund quantity cannot exceed sold quantity");
+                }
+
+                // Proportional refund based on line total
+                var unitTotal = orderItem.Total / orderItem.Quantity;
+                totalRefundAmount += unitTotal * refundItem.Quantity;
+            }
+
+            if (totalRefundAmount <= 0)
+            {
+                return BadRequest("Calculated refund amount must be greater than zero");
+            }
+
+            // Restore stock for refunded quantities
+            await RestoreStockForPartialRefundAsync(order, dto.Items, now);
+
+            // Update receivables for credit sales if requested
+            if (dto.UpdateReceivables && order.PaymentMethod == PaymentMethod.Credit && order.CustomerId.HasValue)
+            {
+                var customer = await _unitOfWork.Customers.GetByIdAsync(order.CustomerId.Value);
+                if (customer != null)
+                {
+                    var balanceBefore = customer.Receivables;
+                    var balanceAfter = balanceBefore - totalRefundAmount;
+                    if (balanceAfter < 0)
+                    {
+                        balanceAfter = 0;
+                    }
+
+                    var receivableTransaction = new ReceivableTransaction
+                    {
+                        CustomerId = customer.Id,
+                        Type = ReceivableTransactionType.Refund,
+                        Amount = totalRefundAmount,
+                        BalanceBefore = balanceBefore,
+                        BalanceAfter = balanceAfter,
+                        Description = string.IsNullOrWhiteSpace(dto.Description)
+                            ? $"Hoàn tiền một phần đơn hàng {order.Code}"
+                            : dto.Description,
+                        PaymentMethod = dto.PaymentMethod,
+                        DueDate = null,
+                        TransactionDate = now,
+                        ReferenceType = "SaleOrder",
+                        ReferenceId = order.Id,
+                        CreatedBy = dto.CreatedBy,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await _unitOfWork.ReceivableTransactions.AddAsync(receivableTransaction);
+
+                    customer.Receivables = balanceAfter;
+                    if (customer.Receivables == 0)
+                    {
+                        customer.PaymentDueDate = null;
+                    }
+
+                    customer.UpdatedAt = DateTime.UtcNow;
+                    await _unitOfWork.Customers.UpdateAsync(customer);
+                }
+            }
+
+            // Create cashbook entry for cash/bank refunds if requested
+            if (dto.CreateCashbookEntry && order.PaymentMethod != BusinessBuddy.Domain.Entities.PaymentMethod.Credit)
+            {
+                var cashbookEntry = new CashbookEntry
+                {
+                    Type = CashbookEntryType.Expense,
+                    Category = "Hoàn tiền đơn hàng",
+                    Amount = totalRefundAmount,
+                    Description = string.IsNullOrWhiteSpace(dto.Description)
+                        ? $"Hoàn tiền một phần cho đơn hàng {order.Code}"
+                        : dto.Description,
+                    PaymentMethod = dto.PaymentMethod,
+                    ReferenceType = "SaleOrder",
+                    ReferenceId = order.Id,
+                    TransactionDate = now,
+                    CreatedBy = dto.CreatedBy,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.CashbookEntries.AddAsync(cashbookEntry);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Partial refund processed successfully",
+                refundAmount = totalRefundAmount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating partial refund for sale order {OrderId}", id);
+            return StatusCode(500, "An error occurred while processing the partial refund");
+        }
+    }
+
+    /// <summary>
+    /// Restores stock for a partial refund (specified quantities per order item)
+    /// </summary>
+    private async Task RestoreStockForPartialRefundAsync(
+        SaleOrder order,
+        IEnumerable<SaleOrderRefundItemDto> refundItems,
+        DateTime transactionDate)
+    {
+        var defaultWarehouse = await _context.Warehouses
+            .FirstOrDefaultAsync(w => w.IsDefault && w.IsActive);
+
+        if (defaultWarehouse == null)
+        {
+            _logger.LogWarning("No default warehouse found. Stock restoration skipped for partial refund of order {OrderId}", order.Id);
+            return;
+        }
+
+        var refundLookup = refundItems.ToDictionary(i => i.OrderItemId, i => i);
+
+        var items = await _context.SaleOrderItems
+            .Include(i => i.Product)
+                .ThenInclude(p => p.Unit)
+            .Include(i => i.Product)
+                .ThenInclude(p => p.BaseUnit)
+            .Where(i => i.SaleOrderId == order.Id && refundLookup.ContainsKey(i.Id))
+            .ToListAsync();
+
+        foreach (var item in items)
+        {
+            try
+            {
+                if (!refundLookup.TryGetValue(item.Id, out var refundItem))
+                {
+                    continue;
+                }
+
+                var product = item.Product;
+                if (product == null)
+                {
+                    _logger.LogWarning("Product {ProductId} not found for order item {ItemId} in partial refund", item.ProductId, item.Id);
+                    continue;
+                }
+
+                var quantityToRestore = CalculateQuantityInBaseUnit(
+                    refundItem.Quantity,
+                    item.UnitId,
+                    product.UnitId,
+                    product.BaseUnitId,
+                    product.ConversionRate);
+
+                var stock = await _context.Stocks
+                    .FirstOrDefaultAsync(s => s.ProductId == product.Id && s.WarehouseId == defaultWarehouse.Id);
+
+                if (stock == null)
+                {
+                    stock = new Stock
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = product.Id,
+                        WarehouseId = defaultWarehouse.Id,
+                        Quantity = 0,
+                        ReservedQuantity = 0,
+                        LastUpdatedAt = transactionDate
+                    };
+                    await _unitOfWork.Stocks.AddAsync(stock);
+                }
+
+                stock.Quantity += quantityToRestore;
+                stock.LastUpdatedAt = transactionDate;
+                await _unitOfWork.Stocks.UpdateAsync(stock);
+
+                var stockTransaction = new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = product.Id,
+                    WarehouseId = defaultWarehouse.Id,
+                    Type = StockTransactionType.In,
+                    Quantity = quantityToRestore,
+                    CostPrice = item.CostPrice,
+                    ReferenceType = "SaleOrder",
+                    ReferenceId = order.Id,
+                    Notes = $"Hoàn trả hàng (một phần) từ đơn hàng {order.Code}",
+                    TransactionDate = transactionDate,
+                    CreatedBy = order.CreatedBy,
+                    CreatedAt = transactionDate
+                };
+                await _unitOfWork.StockTransactions.AddAsync(stockTransaction);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restoring stock for item {ItemId} in partial refund of order {OrderId}", item.Id, order.Id);
+            }
+        }
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] Guid? customerId = null, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
@@ -158,6 +410,81 @@ public class SaleOrdersController : ControllerBase
             if (order.Status == SaleOrderStatus.Completed)
             {
                 await UpdateStockForSaleOrderAsync(order, now);
+            }
+
+            // Create receivable transaction if payment method is Credit
+            if (order.PaymentMethod == PaymentMethod.Credit && order.CustomerId.HasValue && order.Status == SaleOrderStatus.Completed)
+            {
+                var customer = await _unitOfWork.Customers.GetByIdAsync(order.CustomerId.Value);
+                if (customer != null)
+                {
+                    // Calculate debt amount (total - paidAmount)
+                    var debtAmount = order.Total - order.PaidAmount;
+                    
+                    if (debtAmount > 0)
+                    {
+                        var balanceBefore = customer.Receivables;
+                        var balanceAfter = balanceBefore + debtAmount;
+
+                        // Create receivable transaction
+                        var receivableTransaction = new ReceivableTransaction
+                        {
+                            CustomerId = customer.Id,
+                            Type = ReceivableTransactionType.Invoice,
+                            Amount = debtAmount,
+                            BalanceBefore = balanceBefore,
+                            BalanceAfter = balanceAfter,
+                            Description = string.IsNullOrWhiteSpace(order.Notes)
+                                ? $"Đơn hàng nợ {order.Code}"
+                                : $"Đơn hàng nợ {order.Code}: {order.Notes}",
+                            PaymentMethod = PaymentMethod.Credit,
+                            DueDate = dto.PaymentDueDate,
+                            TransactionDate = now,
+                            ReferenceType = "SaleOrder",
+                            ReferenceId = order.Id,
+                            CreatedBy = dto.CreatedBy,
+                            CreatedAt = now,
+                            UpdatedAt = now
+                        };
+
+                        await _unitOfWork.ReceivableTransactions.AddAsync(receivableTransaction);
+
+                        // Update customer receivables
+                        customer.Receivables = balanceAfter;
+                        if (dto.PaymentDueDate.HasValue)
+                        {
+                            // Set payment due date to the latest due date if customer already has one
+                            if (!customer.PaymentDueDate.HasValue || customer.PaymentDueDate.Value < dto.PaymentDueDate.Value)
+                            {
+                                customer.PaymentDueDate = dto.PaymentDueDate.Value;
+                            }
+                        }
+                        customer.UpdatedAt = now;
+                        await _unitOfWork.Customers.UpdateAsync(customer);
+                    }
+                }
+            }
+
+            // Create cashbook entry for non-credit payments when order is completed
+            if (order.PaymentMethod != PaymentMethod.Credit && order.Status == SaleOrderStatus.Completed && order.PaidAmount > 0)
+            {
+                var cashbookEntry = new CashbookEntry
+                {
+                    Type = CashbookEntryType.Income,
+                    Category = "Bán hàng",
+                    Amount = order.PaidAmount,
+                    Description = string.IsNullOrWhiteSpace(order.Notes)
+                        ? $"Bán hàng - Đơn {order.Code}"
+                        : $"Bán hàng - Đơn {order.Code}: {order.Notes}",
+                    PaymentMethod = order.PaymentMethod,
+                    ReferenceType = "SaleOrder",
+                    ReferenceId = order.Id,
+                    TransactionDate = now,
+                    CreatedBy = dto.CreatedBy,
+                    CreatedAt = now
+                };
+
+                await _unitOfWork.CashbookEntries.AddAsync(cashbookEntry);
             }
 
             await _unitOfWork.SaveChangesAsync();

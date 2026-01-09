@@ -70,3 +70,39 @@ export async function deleteCashbookEntry(id: string): Promise<void> {
   await apiClient.delete<void>(`/Cashbook/${id}`);
 }
 
+/**
+ * Get cashbook statistics
+ * @param from - Optional start date filter
+ * @param to - Optional end date filter
+ * @returns Cashbook statistics
+ */
+export interface CashbookStats {
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+  totalTransactions: number;
+  todayIncome: number;
+  todayExpense: number;
+  todayBalance: number;
+  todayTransactions: number;
+  incomeByCategory: Record<string, number>;
+  expenseByCategory: Record<string, number>;
+}
+
+export async function getCashbookStatistics(
+  from?: Date,
+  to?: Date
+): Promise<CashbookStats> {
+  const params: Record<string, string> = {};
+  
+  if (from) {
+    params.from = from.toISOString();
+  }
+  
+  if (to) {
+    params.to = to.toISOString();
+  }
+  
+  return apiClient.get<CashbookStats>("/Cashbook/statistics", params);
+}
+
