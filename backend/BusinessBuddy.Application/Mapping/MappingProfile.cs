@@ -101,6 +101,18 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : string.Empty))
             .ForMember(dest => dest.UnitName, opt => opt.MapFrom(src => src.Unit != null ? src.Unit.Name : string.Empty));
 
+        // ReturnOrder mappings
+        CreateMap<ReturnOrder, ReturnOrderDto>()
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.RefundMethod, opt => opt.MapFrom(src => src.RefundMethod.ToString()))
+            .ForMember(dest => dest.SaleOrderCode, opt => opt.MapFrom(src => src.SaleOrder != null ? src.SaleOrder.Code : string.Empty))
+            .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer != null ? src.Customer.Name : null))
+            .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Items != null ? src.Items : new List<ReturnOrderItem>()));
+
+        CreateMap<ReturnOrderItem, ReturnOrderItemDto>()
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : string.Empty))
+            .ForMember(dest => dest.UnitName, opt => opt.MapFrom(src => src.Unit != null ? src.Unit.Name : string.Empty));
+
         // Add more mappings as needed
     }
 

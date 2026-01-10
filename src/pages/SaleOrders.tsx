@@ -45,6 +45,11 @@ import {
   createSaleOrderRefund,
   type SaleOrderRefundItemRequest,
 } from "@/services/saleOrderService";
+import {
+  createReturnOrder,
+  type CreateReturnOrderRequest,
+  type CreateReturnOrderItemRequest,
+} from "@/services/returnOrderService";
 import type { PaymentMethod, SaleOrder } from "@/types";
 
 /**
@@ -123,6 +128,8 @@ export default function SaleOrders() {
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundLines, setRefundLines] = useState<RefundLineState[]>([]);
   const [refundDescription, setRefundDescription] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>("Cash");
 
   /**
    * Load sale orders from API with current pagination
@@ -340,6 +347,8 @@ export default function SaleOrders() {
 
         setRefundLines(lines);
         setRefundDescription("");
+        setRefundReason("");
+        setRefundMethod(order.paymentMethod === "Credit" ? "Cash" : order.paymentMethod);
         setRefundDialogOpen(true);
       }
     } catch (err) {
@@ -415,7 +424,7 @@ export default function SaleOrders() {
   }, [refundLines]);
 
   /**
-   * Submit partial refund to backend
+   * Submit return order to backend
    */
   const submitPartialRefund = async () => {
     if (!currentOrder) {
@@ -428,8 +437,13 @@ export default function SaleOrders() {
       return;
     }
 
-    const items: SaleOrderRefundItemRequest[] = validLines.map((line) => ({
-      orderItemId: line.orderItemId,
+    if (!refundReason.trim()) {
+      setError("Vui lòng nhập lý do trả hàng");
+      return;
+    }
+
+    const items: CreateReturnOrderItemRequest[] = validLines.map((line) => ({
+      saleOrderItemId: line.orderItemId,
       quantity: line.quantity,
     }));
 
@@ -437,29 +451,33 @@ export default function SaleOrders() {
       setSaving(true);
       setError(null);
 
-      const response = await createSaleOrderRefund(currentOrder.id, {
-        orderId: currentOrder.id,
+      const returnOrderRequest: CreateReturnOrderRequest = {
+        saleOrderId: currentOrder.id,
         items,
-        paymentMethod: currentOrder.paymentMethod,
+        refundMethod: refundMethod,
+        reason: refundReason,
+        notes: refundDescription,
         updateReceivables: true,
         createCashbookEntry: true,
-        description: refundDescription,
-        transactionDate: new Date().toISOString(),
         createdBy: currentOrder.createdBy,
-      });
+      };
 
-      // After refund, we keep order status as Completed (could be enhanced later)
+      const response = await createReturnOrder(returnOrderRequest);
+
+      // After refund, reload orders
       await loadOrders();
       setRefundDialogOpen(false);
       setRefundLines([]);
       setRefundDescription("");
+      setRefundReason("");
+      setRefundMethod("Cash");
 
-      // Optionally show success message in error area as info
+      // Optionally show success message
       // eslint-disable-next-line no-console
-      console.log("Partial refund success:", response);
+      console.log("Return order created:", response);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Không thể tạo phiếu trả hàng";
+        err instanceof Error ? err.message : "Không thể tạo đơn trả hàng";
       setError(message);
     } finally {
       setSaving(false);
@@ -996,6 +1014,8 @@ export default function SaleOrders() {
           if (!open) {
             setRefundLines([]);
             setRefundDescription("");
+            setRefundReason("");
+            setRefundMethod("Cash");
           }
         }}
       >
@@ -1060,10 +1080,43 @@ export default function SaleOrders() {
 
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground">
-                  Ghi chú hoàn tiền
+                  Lý do trả hàng <span className="text-destructive">*</span>
                 </div>
                 <Input
-                  placeholder="Lý do trả hàng / hoàn tiền"
+                  placeholder="Nhập lý do trả hàng (bắt buộc)"
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Phương thức hoàn tiền
+                </div>
+                <Select
+                  value={refundMethod}
+                  onValueChange={(value: PaymentMethod) => setRefundMethod(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Cash">Tiền mặt</SelectItem>
+                    <SelectItem value="BankTransfer">Chuyển khoản</SelectItem>
+                    <SelectItem value="VietQR">VietQR</SelectItem>
+                    <SelectItem value="Momo">Momo</SelectItem>
+                    <SelectItem value="ZaloPay">ZaloPay</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Ghi chú (tùy chọn)
+                </div>
+                <Input
+                  placeholder="Ghi chú thêm"
                   value={refundDescription}
                   onChange={(e) => setRefundDescription(e.target.value)}
                 />

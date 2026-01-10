@@ -25,6 +25,8 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<PaymentSettings>? _paymentSettings;
     private IRepository<ReceivableTransaction>? _receivableTransactions;
     private IRepository<PayableTransaction>? _payableTransactions;
+    private IRepository<ReturnOrder>? _returnOrders;
+    private IRepository<ReturnOrderItem>? _returnOrderItems;
 
     public UnitOfWork(ApplicationDbContext context)
     {
@@ -81,6 +83,12 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<PayableTransaction> PayableTransactions =>
         _payableTransactions ??= new Repository<PayableTransaction>(_context);
+
+    public IRepository<ReturnOrder> ReturnOrders =>
+        _returnOrders ??= new Repository<ReturnOrder>(_context);
+
+    public IRepository<ReturnOrderItem> ReturnOrderItems =>
+        _returnOrderItems ??= new Repository<ReturnOrderItem>(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

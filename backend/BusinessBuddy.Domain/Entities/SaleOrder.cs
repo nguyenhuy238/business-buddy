@@ -46,5 +46,6 @@ public class SaleOrder
     public virtual Customer? Customer { get; set; }
     public virtual ICollection<SaleOrderItem> Items { get; set; } = new List<SaleOrderItem>();
     public virtual ICollection<CashbookEntry> CashbookEntries { get; set; } = new List<CashbookEntry>();
+    public virtual ICollection<ReturnOrder> ReturnOrders { get; set; } = new List<ReturnOrder>();
 }
 

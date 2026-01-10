@@ -22,6 +22,8 @@ public interface IUnitOfWork : IDisposable
     IRepository<PaymentSettings> PaymentSettings { get; }
     IRepository<ReceivableTransaction> ReceivableTransactions { get; }
     IRepository<PayableTransaction> PayableTransactions { get; }
+    IRepository<ReturnOrder> ReturnOrders { get; }
+    IRepository<ReturnOrderItem> ReturnOrderItems { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
