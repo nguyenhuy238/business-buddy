@@ -382,3 +382,62 @@ export interface PayableStatistics {
   totalSuppliersWithPayables: number;
   currentPayables: number;
 }
+
+/**
+ * Available unit option for a product
+ */
+export interface ProductAvailableUnit {
+  unitId: string;
+  unitName: string;
+  unitCode: string;
+  conversionRate: number; // Rate from product's default unit to this unit
+  price: number; // Price in this unit
+  isDefault: boolean; // Is this the product's default unit
+  isBaseUnit: boolean; // Is this the product's base unit
+}
+
+/**
+ * Purchase order status enum
+ */
+export type PurchaseOrderStatus = "Draft" | "Ordered" | "Received" | "PartialReceived" | "Cancelled";
+
+/**
+ * Purchase order interface matching backend PurchaseOrderDto
+ */
+export interface PurchaseOrder {
+  id: string;
+  code: string;
+  supplierId: string;
+  supplierName?: string;
+  status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
+  subtotal: number;
+  discount: number;
+  discountType: "Percent" | "Amount";
+  total: number;
+  paymentMethod: PaymentMethod;
+  paidAmount: number;
+  expectedDeliveryDate?: string;
+  receivedDate?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Purchase order item interface matching backend PurchaseOrderItemDto
+ */
+export interface PurchaseOrderItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  receivedQuantity: number;
+  unitId: string;
+  unitName: string;
+  unitPrice: number;
+  discount: number;
+  discountType: "Percent" | "Amount";
+  total: number;
+}

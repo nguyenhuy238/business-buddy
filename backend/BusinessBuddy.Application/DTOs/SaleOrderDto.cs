@@ -1,3 +1,5 @@
+using BusinessBuddy.Domain.Entities;
+
 namespace BusinessBuddy.Application.DTOs;
 
 public class SaleOrderDto
@@ -43,6 +45,7 @@ public class CreateSaleOrderDto
     public string? PaymentMethod { get; set; } = "Cash";
     public string? Status { get; set; } = "Completed";
     public decimal PaidAmount { get; set; }
+    public DateTime? PaymentDueDate { get; set; } // Ngày đến hạn thanh toán cho đơn hàng nợ
     public string? Notes { get; set; }
     public string CreatedBy { get; set; } = "System";
 }
@@ -55,5 +58,31 @@ public class CreateSaleOrderItemDto
     public decimal UnitPrice { get; set; }
     public decimal Discount { get; set; } = 0;
     public string? DiscountType { get; set; } = "Percent";
+}
+
+/**
+ * DTO for a single line in a sale order refund (partial return)
+ */
+public class SaleOrderRefundItemDto
+{
+    public Guid OrderItemId { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+/**
+ * Request DTO for creating a partial refund of a sale order
+ * Allows returning specific quantities per line and optionally
+ * updating customer receivables and creating a cashbook entry.
+ */
+public class CreateSaleOrderRefundDto
+{
+    public Guid OrderId { get; set; }
+    public List<SaleOrderRefundItemDto> Items { get; set; } = new();
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+    public bool UpdateReceivables { get; set; } = true;
+    public bool CreateCashbookEntry { get; set; } = true;
+    public string Description { get; set; } = string.Empty;
+    public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
+    public string CreatedBy { get; set; } = "System";
 }
 

@@ -68,3 +68,17 @@ public class UpdateProductDto
     public string? CostMethod { get; set; }
 }
 
+/// <summary>
+/// DTO for available unit options for a product
+/// </summary>
+public class ProductAvailableUnitDto
+{
+    public Guid UnitId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public string UnitCode { get; set; } = string.Empty;
+    public decimal ConversionRate { get; set; } = 1; // Rate from product's default unit to this unit
+    public decimal Price { get; set; } // Price in this unit
+    public bool IsDefault { get; set; } // Is this the product's default unit
+    public bool IsBaseUnit { get; set; } // Is this the product's base unit
+}
+

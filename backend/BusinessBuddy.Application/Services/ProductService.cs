@@ -1,6 +1,7 @@
 using AutoMapper;
 using BusinessBuddy.Application.DTOs;
 using BusinessBuddy.Domain.Entities;
+using BusinessBuddy.Infrastructure.Data;
 using BusinessBuddy.Infrastructure.Data.UnitOfWork;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,11 +11,13 @@ public class ProductService : IProductService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly ApplicationDbContext _context;
 
-    public ProductService(IUnitOfWork unitOfWork, IMapper mapper)
+    public ProductService(IUnitOfWork unitOfWork, IMapper mapper, ApplicationDbContext context)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _context = context;
     }
 
     public async Task<IEnumerable<ProductDto>> GetAllProductsAsync(bool includeInactive = false)
@@ -118,6 +121,108 @@ public class ProductService : IProductService
         await _unitOfWork.Products.DeleteAsync(product);
         await _unitOfWork.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>
+    /// Get all available units for a product, including default unit, base unit, and conversions
+    /// </summary>
+    public async Task<IEnumerable<ProductAvailableUnitDto>> GetAvailableUnitsAsync(Guid productId)
+    {
+        var product = await _unitOfWork.Products.GetByIdAsync(productId);
+        if (product == null)
+            return Enumerable.Empty<ProductAvailableUnitDto>();
+
+        var availableUnits = new List<ProductAvailableUnitDto>();
+
+        // Get product's default unit
+        var defaultUnit = await _unitOfWork.UnitOfMeasures.GetByIdAsync(product.UnitId);
+        if (defaultUnit != null)
+        {
+            availableUnits.Add(new ProductAvailableUnitDto
+            {
+                UnitId = defaultUnit.Id,
+                UnitName = defaultUnit.Name,
+                UnitCode = defaultUnit.Code,
+                ConversionRate = 1,
+                Price = product.SalePrice,
+                IsDefault = true,
+                IsBaseUnit = false
+            });
+        }
+
+        // Get base unit if exists and different from default unit
+        if (product.BaseUnitId.HasValue && product.BaseUnitId.Value != product.UnitId)
+        {
+            var baseUnit = await _unitOfWork.UnitOfMeasures.GetByIdAsync(product.BaseUnitId.Value);
+            if (baseUnit != null)
+            {
+                // Calculate price in base unit: if 1 unit = conversionRate base units, then 1 base unit = salePrice / conversionRate
+                var baseUnitPrice = product.ConversionRate > 0 
+                    ? product.SalePrice / product.ConversionRate 
+                    : product.SalePrice;
+
+                availableUnits.Add(new ProductAvailableUnitDto
+                {
+                    UnitId = baseUnit.Id,
+                    UnitName = baseUnit.Name,
+                    UnitCode = baseUnit.Code,
+                    ConversionRate = 1 / product.ConversionRate, // Rate from default unit to base unit
+                    Price = baseUnitPrice,
+                    IsDefault = false,
+                    IsBaseUnit = true
+                });
+            }
+        }
+
+        // Get all unit conversions from ProductUnitConversion table
+        var conversions = await _context.ProductUnitConversions
+            .Include(c => c.FromUnit)
+            .Include(c => c.ToUnit)
+            .Where(c => c.ProductId == productId)
+            .ToListAsync();
+
+        foreach (var conversion in conversions)
+        {
+            // Only add if not already in the list
+            if (!availableUnits.Any(u => u.UnitId == conversion.ToUnitId))
+            {
+                // Calculate price: if conversion is from default unit to target unit
+                decimal targetPrice;
+                if (conversion.FromUnitId == product.UnitId)
+                {
+                    // Direct conversion from default unit
+                    targetPrice = product.SalePrice / conversion.ConversionRate;
+                }
+                else if (product.BaseUnitId.HasValue && conversion.FromUnitId == product.BaseUnitId.Value)
+                {
+                    // Conversion from base unit, need to convert through default unit
+                    var baseUnitPrice = product.ConversionRate > 0 
+                        ? product.SalePrice / product.ConversionRate 
+                        : product.SalePrice;
+                    targetPrice = baseUnitPrice / conversion.ConversionRate;
+                }
+                else
+                {
+                    // Indirect conversion, use default price for now
+                    targetPrice = product.SalePrice;
+                }
+
+                availableUnits.Add(new ProductAvailableUnitDto
+                {
+                    UnitId = conversion.ToUnitId,
+                    UnitName = conversion.ToUnit.Name,
+                    UnitCode = conversion.ToUnit.Code,
+                    ConversionRate = conversion.FromUnitId == product.UnitId 
+                        ? 1 / conversion.ConversionRate 
+                        : conversion.ConversionRate, // Simplified, may need more complex calculation
+                    Price = targetPrice,
+                    IsDefault = false,
+                    IsBaseUnit = false
+                });
+            }
+        }
+
+        return availableUnits;
     }
 
     private async Task<ProductDto> MapToDtoAsync(Product product)

@@ -75,6 +75,32 @@ public class MappingProfile : Profile
         CreateMap<PaymentSettings, PaymentSettingsDto>()
             .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => src.PaymentMethod.ToString()));
 
+        // Cashbook mappings
+        CreateMap<CashbookEntry, CashbookEntryDto>()
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+            .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => src.PaymentMethod.ToString()));
+
+        CreateMap<CreateCashbookEntryDto, CashbookEntry>()
+            .ForMember(dest => dest.Id, opt => opt.Ignore()) // Will be set in service
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => ParseEnum<CashbookEntryType>(src.Type, CashbookEntryType.Income)))
+            .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => ParseEnum<PaymentMethod>(src.PaymentMethod, PaymentMethod.Cash)))
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) // Will be set in service
+            .ForMember(dest => dest.SaleOrder, opt => opt.Ignore())
+            .ForMember(dest => dest.PurchaseOrder, opt => opt.Ignore());
+
+        // PurchaseOrder mappings
+        CreateMap<PurchaseOrder, PurchaseOrderDto>()
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
+            .ForMember(dest => dest.PaymentMethod, opt => opt.MapFrom(src => src.PaymentMethod.ToString()))
+            .ForMember(dest => dest.SupplierName, opt => opt.MapFrom(src => src.Supplier != null ? src.Supplier.Name : null))
+            .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Items != null ? src.Items : new List<PurchaseOrderItem>()));
+
+        CreateMap<PurchaseOrderItem, PurchaseOrderItemDto>()
+            .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : string.Empty))
+            .ForMember(dest => dest.UnitName, opt => opt.MapFrom(src => src.Unit != null ? src.Unit.Name : string.Empty));
+
         // Add more mappings as needed
     }
 

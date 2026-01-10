@@ -245,5 +245,23 @@ public class ProductsController : ControllerBase
             return StatusCode(500, "An error occurred while deleting the product");
         }
     }
+
+    /// <summary>
+    /// Get all available units for a product (default unit, base unit, and conversions)
+    /// </summary>
+    [HttpGet("{id}/available-units")]
+    public async Task<ActionResult<IEnumerable<ProductAvailableUnitDto>>> GetAvailableUnits(Guid id)
+    {
+        try
+        {
+            var units = await _productService.GetAvailableUnitsAsync(id);
+            return Ok(units);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting available units for product {ProductId}", id);
+            return StatusCode(500, "An error occurred while retrieving available units");
+        }
+    }
 }
 

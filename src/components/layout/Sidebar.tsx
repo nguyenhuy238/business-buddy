@@ -14,6 +14,8 @@ import {
   ChevronRight,
   ArrowDownCircle,
   ArrowUpCircle,
+  Receipt,
+  PackageCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -22,6 +24,8 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Tổng quan' },
   { path: '/inventory', icon: Package, label: 'Hàng hóa' },
   { path: '/pos', icon: ShoppingCart, label: 'Bán hàng' },
+  { path: '/sale-orders', icon: Receipt, label: 'Đơn hàng bán' },
+  { path: '/purchase-orders', icon: PackageCheck, label: 'Đơn nhập hàng' },
   { path: '/customers', icon: Users, label: 'Khách hàng' },
   { path: '/suppliers', icon: Truck, label: 'Nhà cung cấp' },
   { path: '/cashbook', icon: Wallet, label: 'Sổ quỹ' },

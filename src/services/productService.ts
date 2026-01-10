@@ -3,7 +3,7 @@
  * Handles all product-related API calls
  */
 import { apiClient } from "./api";
-import type { Product, CreateProduct, UpdateProduct } from "@/types";
+import type { Product, CreateProduct, UpdateProduct, ProductAvailableUnit } from "@/types";
 
 /**
  * Get all products
@@ -103,5 +103,14 @@ export async function uploadProductImage(id: string, file: File, createThumbnail
 
   // Use apiClient.postForm so we don't rely on a global variable and to correctly send multipart/form-data
   return apiClient.postForm<{ imageUrl: string; thumbnailUrl?: string | null }>(`/products/${id}/image`, form);
+}
+
+/**
+ * Get all available units for a product (default unit, base unit, and conversions)
+ * @param id - Product ID
+ * @returns Array of available units
+ */
+export async function getProductAvailableUnits(id: string): Promise<ProductAvailableUnit[]> {
+  return apiClient.get<ProductAvailableUnit[]>(`/products/${id}/available-units`);
 }
 
