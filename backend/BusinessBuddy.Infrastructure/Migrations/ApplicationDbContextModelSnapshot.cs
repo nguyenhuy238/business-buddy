@@ -638,6 +638,115 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.ToTable("ReceivableTransactions");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReturnOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RefundMethod")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SaleOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("SaleOrderId");
+
+                    b.ToTable("ReturnOrders");
+                });
+
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReturnOrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("ReturnOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SaleOrderItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ReturnOrderId");
+
+                    b.HasIndex("SaleOrderItemId");
+
+                    b.HasIndex("UnitId");
+
+                    b.ToTable("ReturnOrderItems");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.SaleOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1193,6 +1302,59 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.Navigation("SaleOrder");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReturnOrder", b =>
+                {
+                    b.HasOne("BusinessBuddy.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.SaleOrder", "SaleOrder")
+                        .WithMany("ReturnOrders")
+                        .HasForeignKey("SaleOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("SaleOrder");
+                });
+
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReturnOrderItem", b =>
+                {
+                    b.HasOne("BusinessBuddy.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.ReturnOrder", "ReturnOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("ReturnOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.SaleOrderItem", "SaleOrderItem")
+                        .WithMany()
+                        .HasForeignKey("SaleOrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BusinessBuddy.Domain.Entities.UnitOfMeasure", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ReturnOrder");
+
+                    b.Navigation("SaleOrderItem");
+
+                    b.Navigation("Unit");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.SaleOrder", b =>
                 {
                     b.HasOne("BusinessBuddy.Domain.Entities.Customer", "Customer")
@@ -1332,11 +1494,18 @@ namespace BusinessBuddy.Infrastructure.Migrations
                     b.Navigation("Items");
                 });
 
+            modelBuilder.Entity("BusinessBuddy.Domain.Entities.ReturnOrder", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.SaleOrder", b =>
                 {
                     b.Navigation("CashbookEntries");
 
                     b.Navigation("Items");
+
+                    b.Navigation("ReturnOrders");
                 });
 
             modelBuilder.Entity("BusinessBuddy.Domain.Entities.StockBatch", b =>

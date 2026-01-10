@@ -29,6 +29,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<PaymentSettings> PaymentSettings { get; set; }
     public DbSet<ReceivableTransaction> ReceivableTransactions { get; set; }
     public DbSet<PayableTransaction> PayableTransactions { get; set; }
+    public DbSet<ReturnOrder> ReturnOrders { get; set; }
+    public DbSet<ReturnOrderItem> ReturnOrderItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -278,6 +280,43 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             // Note: PurchaseOrder relationship is optional and handled manually via ReferenceId
             entity.HasIndex(e => new { e.SupplierId, e.TransactionDate });
+        });
+
+        // ReturnOrder
+        modelBuilder.Entity<ReturnOrder>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasOne(e => e.SaleOrder)
+                  .WithMany(e => e.ReturnOrders)
+                  .HasForeignKey(e => e.SaleOrderId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Customer)
+                  .WithMany()
+                  .HasForeignKey(e => e.CustomerId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ReturnOrderItem
+        modelBuilder.Entity<ReturnOrderItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.ReturnOrder)
+                  .WithMany(e => e.Items)
+                  .HasForeignKey(e => e.ReturnOrderId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.SaleOrderItem)
+                  .WithMany()
+                  .HasForeignKey(e => e.SaleOrderItemId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Product)
+                  .WithMany()
+                  .HasForeignKey(e => e.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Unit)
+                  .WithMany()
+                  .HasForeignKey(e => e.UnitId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

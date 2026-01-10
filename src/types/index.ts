@@ -441,3 +441,48 @@ export interface PurchaseOrderItem {
   discountType: "Percent" | "Amount";
   total: number;
 }
+
+/**
+ * Return order status enum
+ */
+export type ReturnOrderStatus = "Draft" | "Completed" | "Cancelled";
+
+/**
+ * Return order interface matching backend ReturnOrderDto
+ */
+export interface ReturnOrder {
+  id: string;
+  code: string;
+  saleOrderId: string;
+  saleOrderCode: string;
+  customerId?: string;
+  customerName?: string;
+  status: ReturnOrderStatus;
+  items: ReturnOrderItem[];
+  subtotal: number;
+  total: number;
+  refundMethod: PaymentMethod;
+  refundAmount: number;
+  reason: string;
+  notes?: string;
+  createdBy: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Return order item interface matching backend ReturnOrderItemDto
+ */
+export interface ReturnOrderItem {
+  id: string;
+  saleOrderItemId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitId: string;
+  unitName: string;
+  unitPrice: number;
+  total: number;
+  notes?: string;
+}
